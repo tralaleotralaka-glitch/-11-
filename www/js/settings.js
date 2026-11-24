@@ -18,6 +18,15 @@ APPS.settings.render = function(body, win){
   let cur = 'system';
   let sub = null;
 
+  // навигация из любого места (контекстные меню, быстрые действия, трей)
+  win._nav = (page)=>{
+    const subs = ['display','sound','power','about'];
+    if(subs.includes(page)){ cur='system'; sub=page; }
+    else { cur=page; sub=null; }
+    body.querySelectorAll('.se-nav').forEach(x=>x.classList.toggle('on', x.dataset.p===cur));
+    render();
+  };
+
   body.innerHTML = `<div class="se-root">
     <div class="se-side">
       <div class="se-user"><span class="st-ava"></span><span><div class="su-name">Пользователь</div><div class="su-mail">user@arena.local</div></span></div>
@@ -69,7 +78,7 @@ APPS.settings.render = function(body, win){
           ${card({icon:I.monitor, title:'Дисплей', sub:'Яркость, ночной свет, масштаб экрана', link:1, go:'display'})}
           ${card({icon:I.speaker, title:'Звук', sub:'Уровни громкости, устройства вывода', link:1, go:'sound'})}
           ${card({icon:I.bell, title:'Уведомления', sub:'Оповещения от приложений и системы', right:'<button class="switch on" data-k="notif"></button>'})}
-          ${card({icon:I.battery, title:'Питание и батарея', sub:'86% • Остаётся ~3 ч 20 мин', right:'<span class="sc-arrow">›</span>', link:1})}
+          ${card({icon:I.battery, title:'Питание и батарея', sub:Battery.pct()+'% • '+Battery.leftText(), right:'<span class="sc-arrow">›</span>', link:1, go:'power'})}
           ${card({icon:I.win, title:'О системе', sub:'Устройство DESKTOP-ARENA11 • Windows 11 Pro', link:1, go:'about'})}`;
         syncSwitch(pageEl.querySelector('[data-k="notif"]'), 'notif');
         pageEl.querySelectorAll('[data-go]').forEach(c=>c.addEventListener('click', ()=>{ sub=c.dataset.go; render(); }));
@@ -102,6 +111,56 @@ APPS.settings.render = function(body, win){
         });
         pageEl.querySelector('#se-test').addEventListener('click', ()=>{ AudioFX.ensure(); AudioFX.startup(); });
         pageEl.querySelector('#se-playsnd').addEventListener('click', ()=>{ AudioFX.ensure(); AudioFX.notify(); });
+      } else if(sub==='power'){
+        Battery.refresh();
+        const pct = Battery.pct();
+        const modes = ['Экономный', 'Сбалансированный', 'Наилучшая производительность'];
+        const pm = S.data.powerMode==null ? 1 : S.data.powerMode;
+        // график за 24 часа: 100% -> текущий уровень
+        const pts = Array.from({length:25}, (_,i)=>{
+          const t = i/24;
+          const noise = Math.sin(i*2.7)*1.2 + Math.sin(i*1.3)*.8;
+          const v = clamp(pct + (100-pct)*Math.pow(1-t, 1.35) + noise, pct-1, 100);
+          const x = (t*280).toFixed(1), y = ((100-v)/100*78+8).toFixed(1);
+          return `${x},${y}`;
+        });
+        const nowX = (24*280/24).toFixed(0);
+        const usage = [['Экран',34,'#0078D4'],['Система',22,'#9AA7B4'],['Microsoft Edge',14,'#3E76C4'],['Microsoft Store',9,'#18A89C'],['Змейка Neon',7,'#7B5BE6'],['Прочее',14,'#C9D4DE']];
+        pageEl.innerHTML = `<div class="se-crumb">Система › <b>Питание и батарея</b></div><div class="se-h1">Питание и батарея</div>
+          <div class="se-card col se-batt-hero">
+            <div class="sb-top">
+              <div class="sb-gfx ${Battery.charging?'chg':''}"><i style="height:${pct}%"></i><b>${pct}%</b></div>
+              <div class="sc-body"><div class="sc-title" style="font-size:16px">${Battery.charging?'⚡ Заряжается':'От батареи'}</div>
+              <div class="sc-sub">${Battery.leftText()}</div>
+              <div class="sc-sub" style="color:var(--txt3)">${Battery.real?'Данные с устройства Android':'Демо-режим: симуляция расхода'}</div></div>
+            </div>
+            <div class="se-chart">
+              <svg viewBox="0 0 300 100" preserveAspectRatio="none">
+                <defs><linearGradient id="bcg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".45"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>
+                <g stroke="var(--stroke)" stroke-width="1"><line x1="0" y1="8" x2="300" y2="8"/><line x1="0" y1="47" x2="300" y2="47"/><line x1="0" y1="86" x2="300" y2="86"/></g>
+                <polygon points="0,100 ${pts.join(' ')} 300,100" fill="url(#bcg)"/>
+                <polyline points="${pts.join(' ')}" fill="none" stroke="var(--acc)" stroke-width="2.4" stroke-linejoin="round"/>
+                <circle cx="${nowX}" cy="${((100-pct)/100*78+8).toFixed(1)}" r="3.4" fill="var(--acc)"/>
+              </svg>
+              <div class="se-chart-x"><span>24 ч назад</span><span>12 ч</span><span>сейчас</span></div>
+            </div>
+          </div>
+          <div class="se-card se-toggle-row"><span class="sc-ico">${I.leaf}</span><div class="sc-body"><div class="sc-title">Экономия заряда</div><div class="sc-sub">Ограничивает фоновую активность и уведомления</div></div><button class="switch ${d.saver?'on':''}" id="se-saver"></button></div>
+          <div class="se-card col"><div class="sc-body"><div class="sc-title">Режим питания</div><div class="sc-sub">Баланс между производительностью и зарядом</div></div>
+            <div class="seg" style="margin-top:10px;flex-wrap:wrap" id="se-modes">${modes.map((m,i)=>`<button data-m="${i}" class="${pm===i?'on':''}">${m}</button>`).join('')}</div></div>
+          <div class="se-card col"><div class="sc-title" style="font-weight:600">Расход заряда за 24 часа</div>
+            ${usage.map(u=>`<div class="se-usage"><span class="su-name">${u[0]}</span><span class="su-bar"><i style="width:${u[1]*2.4}%;background:${u[2]}"></i></span><span class="su-pct">${u[1]}%</span></div>`).join('')}
+          </div>`;
+        pageEl.querySelector('#se-saver').addEventListener('click', function(){
+          S.data.saver = !S.data.saver; S.changed();
+          this.classList.toggle('on', S.data.saver);
+          toast('Питание', S.data.saver?'Экономия заряда включена':'Экономия заряда выключена', 'leaf');
+        });
+        pageEl.querySelectorAll('#se-modes button').forEach(b=>b.addEventListener('click', ()=>{
+          S.data.powerMode = +b.dataset.m; S.changed();
+          pageEl.querySelectorAll('#se-modes button').forEach(x=>x.classList.remove('on'));
+          b.classList.add('on');
+        }));
       } else if(sub==='about'){
         pageEl.innerHTML = `<div class="se-crumb">Система › <b>О системе</b></div><div class="se-h1">О системе</div>
           <div class="se-about-logo"><img src="assets/boot-logo.png"><div><div class="sa-t">DESKTOP-ARENA11</div><div class="sa-s">Переименовать этот компьютер</div></div></div>
@@ -121,6 +180,24 @@ APPS.settings.render = function(body, win){
               <tr><td>Сборка ОС</td><td>22631.4460</td></tr>
             </table></div>`;
       }
+    }
+    else if(cur==='taskbar'){
+      const al = S.data.tbAlign || 'center';
+      pageEl.innerHTML = `<div class="se-h1">Панель задач</div>
+        <div class="se-card col"><div class="sc-body"><div class="sc-title">Выравнивание панели задач</div><div class="sc-sub">Центр — как в Windows 11 по умолчанию, слева — классическое</div></div>
+          <div class="seg" style="margin-top:10px;max-width:240px" id="se-align">
+            <button data-a="center" class="${al==='center'?'on':''}">По центру</button>
+            <button data-a="left" class="${al==='left'?'on':''}">Слева</button>
+          </div></div>
+        <div class="se-card se-toggle-row"><span class="sc-ico">${I.weather}</span><div class="sc-body"><div class="sc-title">Погодный виджет</div><div class="sc-sub">Показывать погоду слева на панели задач</div></div><button class="switch ${S.data.weatherWidget!==false?'on':''}" id="se-ww"></button></div>
+        <div class="se-card se-toggle-row"><span class="sc-ico">${I.battery}</span><div class="sc-body"><div class="sc-title">Процент заряда</div><div class="sc-sub">Показывать процент рядом со значком батареи</div></div><button class="switch on" id="se-bpct" style="pointer-events:none"></button></div>`;
+      pageEl.querySelectorAll('#se-align button').forEach(b=>b.addEventListener('click', ()=>{
+        S.data.tbAlign = b.dataset.a; S.changed(); UI.renderTaskbar(); render();
+      }));
+      pageEl.querySelector('#se-ww').addEventListener('click', function(){
+        S.data.weatherWidget = S.data.weatherWidget===false ? true : false;
+        S.changed(); UI.renderTaskbar(); this.classList.toggle('on', S.data.weatherWidget!==false);
+      });
     }
     else if(cur==='person'){
       pageEl.innerHTML = `<div class="se-h1">Персонализация</div>
@@ -250,14 +327,8 @@ APPS.settings.render = function(body, win){
   });
   body.querySelector('.se-nav[data-p="system"]').classList.add('on');
 
-  // синхронизация при изменении состояния извне
-  const syncer = ()=>{ if(cur==='system'&&sub==='display') return; };
-  S.on(syncer);
-  win.onClose = ()=>{ const i = S.listeners.indexOf(syncer); if(i>=0) S.listeners.splice(i,1); };
-
   render();
 };
 APPS.settings.onArgs = function(win, args){
-  if(!args) return;
-  if(args.page==='display'){ /* открыть Дисплей */ }
+  if(args && args.page && win._nav) win._nav(args.page);
 };

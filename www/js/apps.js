@@ -13,6 +13,7 @@ APPS.explorer.render = function(body, win){
     {label:'Изображения', icon:'folder', path:'Изображения'},
     {label:'Музыка', icon:'folder', path:'Музыка'},
     {label:'Этот компьютер', icon:'pc', path:'Этот компьютер'},
+    {label:'Телефон', icon:'phone', path:'phone:/'},
   ];
   body.innerHTML = `
     <div class="ex-root">
@@ -38,6 +39,15 @@ APPS.explorer.render = function(body, win){
   const bodyEl = body.querySelector('.ex-body');
 
   function childrenOf(path){
+    /* реальные файлы телефона через мост AndroidBridge */
+    if(path === 'phone:/' || path.startsWith('phone:/')){
+      const r = Bridge.list(path);
+      if(r && r.ok) return r.items.map(it=>({name:it.n, raw:it.p, kind:it.d?'folder':'file', real:true}));
+      const msg = r && r.error === 'permission'
+        ? 'Разрешите доступ к файлам и перезапустите'
+        : 'Файлы телефона доступны в APK-приложении';
+      return [{name:msg, raw:'__info__', kind:'file'}];
+    }
     const node = tree[path];
     if(!node) return [];
     if(node.type==='root') return node.children.map(c=>({name:c==='C:'?'Локальный диск (C:)':c==='D:'?'Данные (D:)':c, raw:c, kind:'drive'}));
@@ -52,25 +62,48 @@ APPS.explorer.render = function(body, win){
 
   function render(){
     const kids = childrenOf(cur);
-    crumb.innerHTML = cur==='Этот компьютер' ? `<span class="crumb-part">Этот компьютер</span>`
-      : (function(){
-        const parts = [];
-        parts.push(`<span class="crumb-part" data-p="Этот компьютер">Этот компьютер</span><span class="crumb-sep">›</span>`);
-        if(tree[cur] && tree[cur].type==='drive'){
-          parts.push(`<span class="crumb-part">${esc(tree[cur].name)}</span>`);
-        } else if(cur==='Пользователи'){
-          parts.push(`<span class="crumb-part">Локальный диск (C:)</span><span class="crumb-sep">›</span><span class="crumb-part">Пользователи</span>`);
-        } else {
-          parts.push(`<span class="crumb-part" data-p="C:">Локальный диск (C:)</span><span class="crumb-sep">›</span><span class="crumb-part">Пользователи</span><span class="crumb-sep">›</span><span class="crumb-part">Пользователь</span>`);
-          if(cur!=='Пользователь') parts.push(`<span class="crumb-sep">›</span><span class="crumb-part">${esc(cur)}</span>`);
-        }
-        return parts.join('');
-      })();
+    /* хлебные крошки: телефон */
+    if(cur === 'phone:/' || cur.startsWith('phone:/')){
+      const parts = [`<span class="crumb-part" data-p="phone:/">Телефон</span>`];
+      const rel = cur === 'phone:/' ? '' : cur.slice(8);
+      if(rel){
+        const segs = rel.split('/').filter(Boolean);
+        segs.forEach((seg, i)=>{
+          const p = 'phone:/' + segs.slice(0, i+1).join('/');
+          parts.push(`<span class="crumb-sep">›</span><span class="crumb-part" data-p="${esc(p)}">${esc(seg)}</span>`);
+        });
+      }
+      crumb.innerHTML = parts.join('');
+    } else if(cur==='Этот компьютер'){
+      crumb.innerHTML = `<span class="crumb-part">Этот компьютер</span>`;
+    } else if(tree[cur] && tree[cur].type==='drive'){
+      crumb.innerHTML = `<span class="crumb-part" data-p="Этот компьютер">Этот компьютер</span><span class="crumb-sep">›</span><span class="crumb-part">${esc(tree[cur].name)}</span>`;
+    } else if(cur==='Пользователи'){
+      crumb.innerHTML = `<span class="crumb-part" data-p="Этот компьютер">Этот компьютер</span><span class="crumb-sep">›</span><span class="crumb-part" data-p="C:">Локальный диск (C:)</span><span class="crumb-sep">›</span><span class="crumb-part">Пользователи</span>`;
+    } else {
+      const parts = [`<span class="crumb-part" data-p="Этот компьютер">Этот компьютер</span><span class="crumb-sep">›</span><span class="crumb-part" data-p="C:">Локальный диск (C:)</span><span class="crumb-sep">›</span><span class="crumb-part" data-p="Пользователь">Пользователь</span>`];
+      if(cur!=='Пользователь') parts.push(`<span class="crumb-sep">›</span><span class="crumb-part">${esc(cur)}</span>`);
+      crumb.innerHTML = parts.join('');
+    }
     crumb.querySelectorAll('.crumb-part[data-p]').forEach(p=>{
       p.addEventListener('click', ()=>navigate(p.dataset.p));
     });
+    const iconFor = k=>{
+      if(k.kind==='drive') return I.pc;
+      if(k.kind==='folder') return I.folder;
+      if(k.real){
+        const n = k.name.toLowerCase();
+        if(/\.(jpg|jpeg|png|gif|webp|bmp)$/.test(n)) return I.photos;
+        if(n.endsWith('.apk')) return I.apk;
+        if(/\.(mp3|wav|ogg|flac)$/.test(n)) return I.music;
+        return I.file;
+      }
+      if(tree[k.raw] && tree[k.raw].content==='[аудио] Откройте Медиаплеер.') return I.music;
+      if(k.raw && k.raw.endsWith('.apk')) return I.apk;
+      return I.file;
+    };
     bodyEl.innerHTML = kids.length ? kids.map((k,i)=>{
-      const ic = k.kind==='drive' ? I.pc : k.kind==='folder' ? I.folder : (tree[k.raw]&&tree[k.raw].content==='[аудио] Откройте Медиаплеер.'?I.music:(k.raw.endsWith('.apk')?I.apk:I.file));
+      const ic = iconFor(k);
       return `<button class="ex-item" data-i="${i}" data-kind="${k.kind}" data-raw="${esc(k.raw)}">${ic}<span>${esc(k.name)}</span></button>`;
     }).join('') : `<div class="ex-empty">Эта папка пуста</div>`;
     body.querySelector('.ex-count').textContent = `Элементов: ${kids.length}`;
@@ -81,6 +114,32 @@ APPS.explorer.render = function(body, win){
   }
 
   function openItem(raw, kind){
+    if(raw === '__info__'){
+      toast('Проводник', 'Реальные файлы телефона (Download, DCIM…) доступны в APK: выдайте разрешение на хранилище', 'phone');
+      return;
+    }
+    /* открытие реальных файлов с телефона */
+    if(raw.startsWith('phone:/')){
+      const n = raw.split('/').pop();
+      const ext = n.includes('.') ? n.split('.').pop().toLowerCase() : '';
+      if(kind === 'folder' || !ext){ navigate(raw); return; }
+      if(['jpg','jpeg','png','gif','webp','bmp'].includes(ext)){
+        const r = Bridge.readB64(raw);
+        if(r && r.ok) WM.open('photos', {dataUrl:`data:${r.mime};base64,${r.b64}`, name:n});
+        else toast('Проводник', 'Не удалось открыть «'+n+'»', 'phone');
+      } else if(['txt','log','md','json','xml','csv'].includes(ext)){
+        const r = Bridge.readText(raw);
+        if(r && r.ok) WM.open('notepad', {name:n, content:r.text});
+        else toast('Проводник', 'Не удалось прочитать «'+n+'»', 'phone');
+      } else if(['mp3','wav','ogg','flac'].includes(ext)){
+        toast('Медиаплеер', 'Воспроизведение файлов телефона — в следующей версии', 'music');
+      } else if(ext === 'apk'){
+        toast(n, 'Это APK-файл. Устанавливайте его через проводник Android', 'apk');
+      } else {
+        toast(n, 'Нет приложения для открытия этого типа файла', 'file');
+      }
+      return;
+    }
     if(kind==='drive'||kind==='folder'){ navigate(raw); return; }
     if(raw.endsWith('.txt')){
       const node = tree[raw];
@@ -104,10 +163,9 @@ APPS.explorer.render = function(body, win){
   }
 
   function navigate(path){
-    if(path==='Пользователь') path='Пользователь';
     backStack.push(cur); fwdStack.length=0;
     cur=path; render();
-    body.querySelectorAll('.ex-side-item').forEach(s=>s.classList.toggle('on', s.dataset.p===path));
+    body.querySelectorAll('.ex-side-item').forEach(s=>s.classList.toggle('on', s.dataset.p===path || (s.dataset.p==='phone:/' && path.startsWith('phone:/'))));
   }
   body.querySelectorAll('.ex-side-item').forEach(s=>{
     s.addEventListener('click', ()=>{
@@ -118,6 +176,13 @@ APPS.explorer.render = function(body, win){
   });
   body.querySelector('.nav-back').addEventListener('click', ()=>{ if(backStack.length){ fwdStack.push(cur); cur=backStack.pop(); render(); } });
   body.querySelector('.nav-up').addEventListener('click', ()=>{
+    if(cur.startsWith('phone:/')){
+      if(cur==='phone:/') return;
+      const rel = cur.slice(8);
+      const idx = rel.lastIndexOf('/');
+      navigate(idx<0 ? 'phone:/' : 'phone:/'+rel.slice(0, idx));
+      return;
+    }
     const node = tree[cur];
     if(cur==='Этот компьютер') return;
     if(node&&node.type==='drive') navigate('Этот компьютер');
@@ -138,8 +203,12 @@ APPS.explorer.render = function(body, win){
 
 /* ---------- Microsoft Edge ---------- */
 APPS.edge.render = function(body, win){
-  const tabs = [{title:'Новая вкладка', page:'start'}];
+  const tabs = [{title:'Новая вкладка', page:'start', hist:[{title:'Новая вкладка', page:'start'}], hi:0}];
   let cur = 0;
+  const pushState = (t, st)=>{
+    t.hist = (t.hist||[]).slice(0, (t.hi??0)+1);
+    t.hist.push(st); t.hi = t.hist.length-1;
+  };
   body.innerHTML = `<div class="eg-root">
     <div class="eg-tabs"><div class="eg-tablist" style="display:flex;gap:2px"></div><button class="eg-newtab">${I.apps}</button></div>
     <div class="eg-bar">
@@ -233,28 +302,37 @@ APPS.edge.render = function(body, win){
       'Почта': docHTML('Почта', ['Входящие (0) — новых писем нет.']),
     };
     const html = docs[name] || docHTML(name, ['Страница не найдена.']);
-    tabs[cur] = {title:name, page:'doc', html, url:name.toLowerCase()+'.example'};
+    const st = {title:name, page:'doc', html, url:name.toLowerCase()+'.example'};
+    pushState(tabs[cur], st); Object.assign(tabs[cur], st);
     renderTabs(); renderPage();
   }
 
   function navigate(q){
     const looksUrl = /^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/\S*)?$/i.test(q);
-    if(looksUrl){
-      tabs[cur] = {title:q, page:'ext', url:q};
-    } else {
-      tabs[cur] = {title:q, page:'results', query:q, url:'поиск: '+q};
-    }
+    const st = looksUrl
+      ? {title:q, page:'ext', url:q}
+      : {title:q, page:'results', query:q, url:'поиск: '+q};
+    pushState(tabs[cur], st); Object.assign(tabs[cur], st);
     renderTabs(); renderPage();
   }
+  win._edgeNavigate = navigate;
 
   body.querySelector('.eg-newtab').addEventListener('click', ()=>{ tabs.push({title:'Новая вкладка', page:'start'}); cur=tabs.length-1; renderTabs(); renderPage(); });
   urlInp.addEventListener('keydown', e=>{ if(e.key==='Enter' && urlInp.value.trim()) navigate(urlInp.value.trim()); });
-  body.querySelector('.eg-back').addEventListener('click', ()=>{ tabs[cur]={title:'Новая вкладка',page:'start'}; renderTabs(); renderPage(); });
-  body.querySelector('.eg-fwd').addEventListener('click', ()=>{ renderPage(); });
+  body.querySelector('.eg-back').addEventListener('click', ()=>{
+    const t = tabs[cur];
+    if(t.hi > 0){ t.hi--; Object.assign(t, t.hist[t.hi]); renderTabs(); renderPage(); }
+  });
+  body.querySelector('.eg-fwd').addEventListener('click', ()=>{
+    const t = tabs[cur];
+    if(t.hist && t.hi < t.hist.length-1){ t.hi++; Object.assign(t, t.hist[t.hi]); renderTabs(); renderPage(); }
+  });
   body.querySelector('.eg-rel').addEventListener('click', ()=>{ renderPage(); });
   renderTabs(); renderPage();
 };
-APPS.edge.onArgs = function(win, args){ if(args && args.query){ /* открыть поиск */ const inp = win.body.querySelector('.eg-url input'); if(inp){ inp.value=''; } WM.focus(win.id); } };
+APPS.edge.onArgs = function(win, args){
+  if(args && args.query && win._edgeNavigate){ WM.focus(win.id); win._edgeNavigate(args.query); }
+};
 
 /* ---------- Блокнот ---------- */
 APPS.notepad.render = function(body, win){
@@ -434,6 +512,7 @@ APPS.photos.render = function(body, win, args){
   const items = [...WALLPAPERS.map(w=>({name:w.name, url:w.url, wallpaper:w.id})), ...PHOTO_GRADS.map(g=>({name:g.name, url:g.url}))];
   let viewing = args && args.src ? items.findIndex(i=>i.url===args.src) : -1;
   if(viewing<0 && args && args.src) items.push({name:'Изображение.jpg', url:args.src});
+  if(args && args.dataUrl){ items.push({name:args.name||'Изображение.jpg', url:args.dataUrl}); viewing = items.length-1; }
   function renderGrid(){
     body.innerHTML = `<div class="ph-root">
       <div class="ph-toolbar"><span class="tb-title">Коллекция</span><span style="flex:1"></span><span>${items.length} элементов</span></div>
@@ -874,6 +953,84 @@ APPS.tasks.render = function(body, win){
   body.querySelector('.tk-addbtn').addEventListener('click', add);
   body.querySelector('.tk-add input').addEventListener('keydown', e=>{ if(e.key==='Enter') add(); });
   render();
+};
+
+/* ---------- Диспетчер задач ---------- */
+APPS.taskmgr.render = function(body, win){
+  const sysProcs = [
+    {name:'Система', icon:'win', base:1.2, mem:132},
+    {name:'Проводник (оболочка)', icon:'explorer', base:.8, mem:88},
+    {name:'Диспетчер окон рабочего стола', icon:'taskview', base:1.6, mem:146},
+    {name:'Windows Audio', icon:'speaker', base:.3, mem:24},
+    {name:'Служба узла: сеть', icon:'wifi', base:.5, mem:36},
+    {name:'Антивредоносная служба', icon:'shield', base:2.4, mem:210},
+  ];
+  let procs = sysProcs.map(p=>({...p, cpu:p.base}));
+  const cpuHist = Array.from({length:40}, ()=>5+Math.random()*8);
+
+  body.innerHTML = `<div class="tmgr-root">
+    <div class="tmgr-tabs"><button class="on" data-t="proc">Процессы</button><button data-t="perf">Производительность</button></div>
+    <div class="tmgr-view"></div>
+    <div class="tmgr-status"><span class="tmgr-count"></span><span class="tmgr-cpu"></span><span class="tmgr-mem"></span></div>
+  </div>`;
+  const view = body.querySelector('.tmgr-view');
+  let tab = 'proc';
+
+  function allProcs(){
+    return [...[...WM.wins.values()].map(w=>({name:APPS[w.appId].name, icon:APPS[w.appId].icon, cpu:.4+Math.random()*5, mem:60+Math.random()*190, id:w.id})), ...procs];
+  }
+  function renderProc(){
+    const all = allProcs();
+    view.innerHTML = `
+      <div class="tmgr-head"><span>Имя</span><span>ЦП</span><span>Память</span><span></span></div>
+      <div class="tmgr-list">${all.map((p,i)=>`
+        <div class="tmgr-row" data-win="${p.id||''}">
+          <span class="tr-name">${I[p.icon]||I.apps}<span>${esc(p.name)}</span></span>
+          <span class="tr-cpu">${p.cpu.toFixed(1)}%</span>
+          <span class="tr-mem">${p.mem.toFixed(0)} МБ</span>
+          ${p.id?'<button class="tr-end">Снять</button>':'<span></span>'}
+        </div>`).join('')}</div>`;
+    view.querySelectorAll('.tr-end').forEach(b=>b.addEventListener('click', e=>{
+      const row = e.target.closest('.tmgr-row');
+      if(row.dataset.win){ WM.close(row.dataset.win); renderProc(); }
+    }));
+    const cpu = Math.min(100, all.reduce((s,p)=>s+p.cpu,0));
+    const mem = all.reduce((s,p)=>s+p.mem,0);
+    body.querySelector('.tmgr-count').textContent = `Процессов: ${all.length}`;
+    body.querySelector('.tmgr-cpu').textContent = `ЦП: ${cpu.toFixed(0)}%`;
+    body.querySelector('.tmgr-mem').textContent = `Память: ${(mem/1024).toFixed(2)} ГБ / 16 ГБ`;
+  }
+  function renderPerf(){
+    const cpu = Math.min(100, cpuHist.slice(-8).reduce((s,v)=>s+v,0)/8).toFixed(0);
+    view.innerHTML = `
+      <div class="tmgr-perf">
+        <div class="tp-card"><div class="tp-title">ЦП — Intel Core i5-12400</div>
+          <div class="tp-big">${cpu}%</div>
+          <div class="tp-bars">${cpuHist.map(v=>`<i style="height:${Math.max(6,v)}%"></i>`).join('')}</div>
+        </div>
+        <div class="tp-card"><div class="tp-title">Память — 16,0 ГБ</div>
+          <div class="tp-big">${(5.1+procs.reduce((s,p)=>s+p.mem,0)/1024/2).toFixed(1)} ГБ</div>
+          <div class="tp-line"><i style="width:${(5.1+procs.reduce((s,p)=>s+p.mem,0)/1024/2)/16*100}%"></i></div>
+        </div>
+        <div class="tp-card"><div class="tp-title">Батарея</div>
+          <div class="tp-big">${Battery.pct()}%</div>
+          <div class="tp-line"><i style="width:${Battery.pct()}%;background:${Battery.charging?'#16C60C':'var(--acc)'}"></i></div>
+          <div class="tp-sub">${Battery.leftText()}</div>
+        </div>
+      </div>`;
+  }
+  function renderAll(){ tab==='proc' ? renderProc() : renderPerf(); }
+  body.querySelectorAll('.tmgr-tabs button').forEach(b=>b.addEventListener('click', ()=>{
+    body.querySelectorAll('.tmgr-tabs button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); tab=b.dataset.t; renderAll();
+  }));
+  const t = setInterval(()=>{
+    procs.forEach(p=>{ p.cpu = clamp(p.cpu + (Math.random()-.5)*1.2, .1, 9); });
+    cpuHist.push(3+Math.random()*10+WM.wins.size*2); cpuHist.shift();
+    renderAll();
+  }, 1600);
+  win.timers.push(t);
+  renderAll();
 };
 
 /* ---------- Корзина ---------- */

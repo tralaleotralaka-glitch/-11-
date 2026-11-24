@@ -2,8 +2,15 @@ package com.arena.win11
 
 import android.app.Activity
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.util.Base64
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -11,25 +18,128 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
+import java.io.ByteArrayOutputStream
+import java.io.File
 
 class MainActivity : Activity() {
 
     private lateinit var webView: WebView
 
+    // Корень общего хранилища
+    private fun storageRoot(): String =
+        Environment.getExternalStorageDirectory().absolutePath
+
+    private fun resolvePhonePath(p: String): String? {
+        if (!p.startsWith("phone:/")) return null
+        val rel = p.removePrefix("phone:/").trim('/')
+        if (rel.isEmpty()) return storageRoot()
+        if (rel.contains("..")) return null
+        return storageRoot() + "/" + rel
+    }
+
+    private fun jsonStr(s: String): String = s
+        .replace("\\", "\\\\").replace("\"", "\\\"")
+        .replace("\n", "\\n").replace("\r", "").replace("\t", "\\t")
+
+    inner class Bridge {
+
+        @JavascriptInterface
+        fun hasStorage(): Boolean = true
+
+        @JavascriptInterface
+        fun getBattery(): String {
+            return try {
+                val i = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+                val status = i?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+                val temp = (i?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10.0
+                val pct = if (level >= 0 && scale > 0) level.toDouble() / scale else 0.86
+                val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                        status == BatteryManager.BATTERY_STATUS_FULL
+                """{"ok":true,"level":$pct,"charging":$charging,"temp":$temp}"""
+            } catch (e: Exception) {
+                """{"ok":false,"error":"${jsonStr(e.message ?: "?")}"}"""
+            }
+        }
+
+        @JavascriptInterface
+        fun listFiles(phonePath: String): String {
+            return try {
+                val dir = File(resolvePhonePath(phonePath) ?: return """{"ok":false,"error":"bad-path"}""")
+                if (!dir.exists() || !dir.isDirectory) return """{"ok":false,"error":"not-found"}"""
+                val files = dir.listFiles()
+                    ?: return """{"ok":false,"error":"permission"}"""
+                val root = storageRoot()
+                val sorted = files.sortedWith(
+                    compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() }
+                ).take(500)
+                val items = sorted.joinToString(",") { f ->
+                    val full = f.absolutePath
+                    val jp = if (full == root) "phone:/" else "phone:/" + full.removePrefix(root).trimStart('/')
+                    """{"n":"${jsonStr(f.name)}","d":${f.isDirectory},"p":"${jsonStr(jp)}","s":${if (f.isFile) f.length() else 0}}"""
+                }
+                """{"ok":true,"items":[$items]}"""
+            } catch (e: Exception) {
+                """{"ok":false,"error":"${jsonStr(e.message ?: "?")}"}"""
+            }
+        }
+
+        @JavascriptInterface
+        fun readFileB64(phonePath: String): String {
+            return try {
+                val f = File(resolvePhonePath(phonePath) ?: return """{"ok":false,"error":"bad-path"}""")
+                if (!f.exists() || f.length() > 6_000_000) return """{"ok":false,"error":"too-large"}"""
+                val bytes = f.readBytes()
+                val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                """{"ok":true,"b64":"$b64","mime":"${mimeOf(f.name)}"}"""
+            } catch (e: Exception) {
+                """{"ok":false,"error":"${jsonStr(e.message ?: "?")}"}"""
+            }
+        }
+
+        @JavascriptInterface
+        fun readText(phonePath: String): String {
+            return try {
+                val f = File(resolvePhonePath(phonePath) ?: return """{"ok":false,"error":"bad-path"}""")
+                if (!f.exists() || f.length() > 500_000) return """{"ok":false,"error":"too-large"}"""
+                val text = f.readText(Charsets.UTF_8)
+                """{"ok":true,"text":"${jsonStr(text)}"}"""
+            } catch (e: Exception) {
+                """{"ok":false,"error":"${jsonStr(e.message ?: "?")}"}"""
+            }
+        }
+
+        private fun mimeOf(name: String): String {
+            val ext = name.substringAfterLast('.', "").lowercase()
+            return when (ext) {
+                "jpg", "jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "gif" -> "image/gif"
+                "webp" -> "image/webp"
+                "bmp" -> "image/bmp"
+                "mp3" -> "audio/mpeg"
+                "wav" -> "audio/wav"
+                "ogg" -> "audio/ogg"
+                "mp4" -> "video/mp4"
+                "pdf" -> "application/pdf"
+                else -> "application/octet-stream"
+            }
+        }
+    }
+
     @Suppress("SetJavaScriptEnabled", "DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Отдача встроенных файлов по https://appassets.androidplatform.net/assets/...
-        // чтобы localStorage и современный веб-стек работали без ограничений file://
         val assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
         webView = WebView(this)
         setContentView(webView)
-
         webView.setBackgroundColor(Color.parseColor("#0A0F1C"))
+
         val s = webView.settings
         s.javaScriptEnabled = true
         s.domStorageEnabled = true
@@ -39,6 +149,8 @@ class MainActivity : Activity() {
         s.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         s.allowFileAccess = false
         s.allowContentAccess = false
+
+        webView.addJavascriptInterface(Bridge(), "AndroidBridge")
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
@@ -52,7 +164,6 @@ class MainActivity : Activity() {
             ): Boolean {
                 val url = request.url
                 if (url.host == "appassets.androidplatform.net") return false
-                // Внешние ссылки открываем в браузере
                 return try {
                     startActivity(Intent(Intent.ACTION_VIEW, url))
                     true
@@ -63,7 +174,24 @@ class MainActivity : Activity() {
         }
         webView.webChromeClient = WebChromeClient()
 
+        requestStoragePermissions()
         webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+    }
+
+    private fun requestStoragePermissions() {
+        val perms = if (Build.VERSION.SDK_INT >= 33) arrayOf(
+            "android.permission.READ_MEDIA_IMAGES",
+            "android.permission.READ_MEDIA_VIDEO",
+            "android.permission.READ_MEDIA_AUDIO"
+        ) else arrayOf(
+            "android.permission.READ_EXTERNAL_STORAGE"
+        )
+        val missing = perms.filter {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            try { requestPermissions(missing.toTypedArray(), 42) } catch (_: Exception) {}
+        }
     }
 
     @Deprecated("Deprecated in Java")

@@ -676,6 +676,65 @@ select.winp{background:var(--card);border:1px solid var(--stroke2);border-radius
 .se-about-logo .sa-s{font-size:12px;color:var(--txt2)}
 .se-toggle-row{cursor:pointer}
 
+/* ============ v2: батарея, трей, диспетчер задач, календарь ============ */
+.tray-bat-pct{font-size:12px;color:var(--txt);margin-left:2px;font-weight:400}
+#taskbar.left .tb-c{justify-content:flex-start;padding-left:6px}
+.qs-bat{background:none;border:none;font:inherit;color:var(--txt)}
+
+/* календарь */
+#cal{width:min(380px, calc(100vw - 20px))}
+.cal-grid .cg-day{cursor:pointer}
+.cal-grid .cg-day.picked{box-shadow:inset 0 0 0 2px var(--acc)}
+.cal-grid .cg-day.picked:not(.today){background:var(--hov2)}
+.cal-clear{display:block;margin:6px auto 0;background:var(--card);border:1px solid var(--stroke2);border-radius:5px;color:var(--txt);font-size:12px;padding:6px 18px}
+.cal-clear:hover{background:var(--card-h)}
+.cal-nav button:last-child{font-size:18px;line-height:1}
+
+/* страница батареи */
+.se-batt-hero{gap:12px}
+.sb-top{display:flex;align-items:center;gap:20px}
+.sb-gfx{position:relative;width:64px;height:110px;border:3px solid var(--txt2);border-radius:10px;flex-shrink:0;overflow:hidden}
+.sb-gfx::before{content:'';position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:26px;height:8px;background:var(--txt2);border-radius:3px 3px 0 0}
+.sb-gfx i{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(180deg,#2EE59D,#16C60C);border-radius:0 0 6px 6px;transition:height .4s}
+.sb-gfx.chg i{background:linear-gradient(180deg,#7FD1FF,var(--acc))}
+.sb-gfx b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.se-chart{margin-top:14px}
+.se-chart svg{width:100%;height:110px;display:block}
+.se-chart-x{display:flex;justify-content:space-between;font-size:11px;color:var(--txt3);margin-top:4px}
+.se-usage{display:flex;align-items:center;gap:12px;padding:7px 2px;font-size:12.5px}
+.se-usage .su-name{width:150px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.se-usage .su-bar{flex:1;height:8px;border-radius:4px;background:var(--slider-rest);overflow:hidden}
+.se-usage .su-bar i{display:block;height:100%;border-radius:4px}
+.se-usage .su-pct{width:40px;text-align:right;color:var(--txt2)}
+
+/* диспетчер задач */
+.tmgr-root{display:flex;flex-direction:column;height:100%;background:var(--win-body)}
+.tmgr-tabs{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--stroke)}
+.tmgr-tabs button{padding:6px 16px;border-radius:5px;font-size:12.5px;color:var(--txt)}
+.tmgr-tabs button.on{background:var(--hov2);font-weight:600}
+.tmgr-view{flex:1;overflow-y:auto;min-height:0}
+.tmgr-head{display:grid;grid-template-columns:1fr 64px 84px 74px;padding:8px 14px;font-size:11.5px;color:var(--txt2);border-bottom:1px solid var(--stroke);position:sticky;top:0;background:var(--win-body)}
+.tmgr-head span:not(:first-child){text-align:right}
+.tmgr-list{padding:4px 0}
+.tmgr-row{display:grid;grid-template-columns:1fr 64px 84px 74px;align-items:center;padding:7px 14px;font-size:12.5px}
+.tmgr-row:hover{background:var(--hov)}
+.tmgr-row .tr-name{display:flex;align-items:center;gap:11px;min-width:0}
+.tmgr-row .tr-name svg{width:17px;height:17px;flex-shrink:0}
+.tmgr-row .tr-name span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tmgr-row .tr-cpu,.tmgr-row .tr-mem{text-align:right;color:var(--txt2)}
+.tmgr-row .tr-end{background:var(--card);border:1px solid var(--stroke2);border-radius:4px;font-size:11px;color:var(--txt);padding:4px 0;margin-left:10px}
+.tmgr-row .tr-end:hover{background:#C42B1C;border-color:#C42B1C;color:#fff}
+.tmgr-status{display:flex;gap:22px;padding:8px 14px;border-top:1px solid var(--stroke);font-size:11.5px;color:var(--txt2)}
+.tmgr-perf{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;padding:14px}
+.tp-card{background:var(--card);border:1px solid var(--stroke);border-radius:8px;padding:14px}
+.tp-title{font-size:12px;color:var(--txt2);margin-bottom:6px}
+.tp-big{font-size:30px;font-weight:600;margin-bottom:8px}
+.tp-bars{display:flex;align-items:flex-end;gap:2px;height:56px}
+.tp-bars i{flex:1;background:var(--acc);border-radius:2px 2px 0 0;min-height:4px}
+.tp-line{height:8px;border-radius:4px;background:var(--slider-rest);overflow:hidden;margin-bottom:8px}
+.tp-line i{display:block;height:100%;background:var(--acc);border-radius:4px}
+.tp-sub{font-size:11.5px;color:var(--txt2)}
+
 /* ============ Адаптив ============ */
 @media (max-width:760px){
   .st-grid{grid-template-columns:repeat(4,1fr)}
@@ -692,4 +751,16 @@ select.winp{background:var(--card);border:1px solid var(--stroke2);border-radius
   .sto-hero .sh-ico{width:60px;height:60px}
   .sto-hero .sh-name{font-size:19px}
   #toasts{width:calc(100vw - 24px)}
+  .tray-bat-pct{display:none}
+  .cal-time{font-size:26px}
+  .sb-top{gap:14px}
+  .sb-gfx{width:52px;height:92px}
+  .se-usage .su-name{width:104px}
+  .tmgr-head{grid-template-columns:1fr 56px 72px 64px;padding:8px 10px}
+  .tmgr-row{grid-template-columns:1fr 56px 72px 64px;padding:7px 10px}
+}
+@media (max-width:430px){
+  .tb-weather{display:none}
+  .tb-search-pill{display:none}
+  .tbtn-tb,.tb-ibtn{width:38px;height:38px}
 }

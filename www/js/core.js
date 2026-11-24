@@ -68,6 +68,54 @@ const AudioFX = {
   click(){ this.tone(1600, 0, 0.03, 'sine', .06); },
 };
 
+/* ---------- Мост к Android (файлы телефона, батарея) ---------- */
+const Bridge = {
+  get available(){ return typeof window.AndroidBridge !== 'undefined' && !!window.AndroidBridge; },
+  list(path){
+    if(!this.available) return {ok:false, error:'no-bridge'};
+    try{ return JSON.parse(AndroidBridge.listFiles(path)); }catch(e){ return {ok:false, error:'bridge'}; }
+  },
+  readB64(path){
+    if(!this.available) return {ok:false, error:'no-bridge'};
+    try{ return JSON.parse(AndroidBridge.readFileB64(path)); }catch(e){ return {ok:false, error:'bridge'}; }
+  },
+  readText(path){
+    if(!this.available) return {ok:false, error:'no-bridge'};
+    try{ return JSON.parse(AndroidBridge.readText(path)); }catch(e){ return {ok:false, error:'bridge'}; }
+  },
+  battery(){
+    if(!this.available) return null;
+    try{ return JSON.parse(AndroidBridge.getBattery()); }catch(e){ return null; }
+  },
+};
+
+/* ---------- Батарея (реальная на телефоне, симуляция в браузере) ---------- */
+const Battery = {
+  level:.86, charging:false, real:false, _t0:null,
+  refresh(){
+    const b = Bridge.battery();
+    if(b && typeof b.level === 'number'){
+      this.level = b.level; this.charging = !!b.charging; this.real = true; return;
+    }
+    if(!this._t0) this._t0 = Date.now();
+    const hours = (Date.now()-this._t0)/3600000;
+    if(S.data.saver) this.level = Math.max(.06, this.level - hours*.004);
+    else this.level = Math.max(.06, .86 - hours*.018);
+    this.charging = false; this.real = false;
+  },
+  pct(){ this.refresh(); return Math.round(this.level*100); },
+  left(){
+    const drain = this.charging ? -.30 : (S.data.saver ? .005 : .018);
+    if(drain <= 0) return 99;
+    return (this.level-.05)/drain;
+  },
+  leftText(){
+    const h = this.left();
+    if(h >= 99) return 'Заряд держится очень долго';
+    return `Осталось примерно ${Math.floor(h)} ч ${Math.round((h%1)*60)} мин`;
+  },
+};
+
 /* ---------- Утилиты ---------- */
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -366,6 +414,9 @@ const UI = {
 
   /* ==== панель задач ==== */
   renderTaskbar(){
+    // выравнивание и виджет погоды
+    $('#taskbar').classList.toggle('left', S.data.tbAlign === 'left');
+    $('#tb-weather').style.display = (S.data.tbAlign === 'left' || S.data.weatherWidget === false) ? 'none' : '';
     const host = $('#tb-apps');
     const running = [...new Set([...WM.wins.values()].map(w=>w.appId))];
     const order = [...TASKBAR_PINNED.filter(a=>running.includes(a) || true), ...running.filter(a=>!TASKBAR_PINNED.includes(a))];
@@ -395,10 +446,20 @@ const UI = {
         ], e.clientX-40, e.clientY-110);
       });
     });
-    // часы
+    // часы и батарея
+    this.updateTray();
+  },
+
+  /* часы + процент батареи (обновляются раз в секунду без перерисовки) */
+  updateTray(){
     const d = new Date();
-    $('#tb-time').textContent = d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+    const t = $('#tb-time'); if(!t) return;
+    t.textContent = d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
     $('#tb-date').textContent = d.toLocaleDateString('ru-RU');
+    const pct = Battery.pct();
+    const el = document.querySelector('.tray-bat-pct');
+    if(el) el.textContent = pct + '%';
+    const lk = $('#lock'); // батарея на экране блокировки не нужна, но обновим QS если открыт
   },
 
   /* ==== рабочий стол: значки ==== */
@@ -450,7 +511,8 @@ const UI = {
           S.data.iconPos[item.id] = {x:nx, y:ny};
           S.changed();
         } else if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)<=4){
-          // одиночный клик — открыть на тач-устройствах дублируется dblclick
+          // одиночный тап открывает на сенсорных устройствах
+          if(e.pointerType !== 'mouse') open();
         }
       });
       el.addEventListener('contextmenu', e=>{
@@ -531,7 +593,7 @@ const UI = {
   renderStart(filter){
     const q = (filter||'').trim().toLowerCase();
     const grid = $('#st-grid');
-    const all = [...new Set([...START_PINNED, ...S.data.installed])].filter(a=>APPS[a]);
+    const all = this.allApps();
     const pinned = q ? all.filter(a=>APPS[a].name.toLowerCase().includes(q)) : all;
     grid.innerHTML = pinned.slice(0,18).map(a=>`<button class="st-app" data-app="${a}">${I[APPS[a].icon]}<span>${esc(APPS[a].name)}</span></button>`).join('')
       || `<div class="st-empty">Ничего не найдено</div>`;
@@ -581,7 +643,7 @@ const UI = {
       <div class="qs-slider">${I['sun']}<input class="wsl" id="qs-bright" type="range" min="15" max="100" value="${d.brightness}"></div>
       <div class="qs-slider">${I['speaker']}<input class="wsl" id="qs-vol" type="range" min="0" max="100" value="${d.volume}"></div>
       <div class="qs-foot">
-        <span class="qs-bat">${I['battery']} 86%</span>
+        <button class="qs-bat" id="qs-bat" title="Питание и батарея">${I['battery']} ${Battery.pct()}%${Battery.charging?' ⚡':''}</button>
         <div class="qs-footbtns">
           <button class="qs-fbtn" id="qs-edit" title="Изменить">${I['edit']}</button>
           <button class="qs-fbtn" id="qs-gear" title="Все параметры">${I['gear']}</button>
@@ -606,6 +668,7 @@ const UI = {
     });
     $('#qs-edit').addEventListener('click', ()=>toast('Быстрые действия','Редактирование недоступно в демо','edit'));
     $('#qs-gear').addEventListener('click', ()=>{ UI.closeAllFlyouts(); WM.open('settings'); });
+    $('#qs-bat').addEventListener('click', ()=>{ UI.closeAllFlyouts(); WM.open('settings',{page:'power'}); });
   },
 
   /* ==== календарь ==== */
@@ -635,28 +698,58 @@ const UI = {
       : `<div class="cal-n-empty">Нет новых уведомлений</div>`;
 
     $('#cal').innerHTML = `
-      <div class="cal-notif">${notifs}</div>
+      <div class="cal-notif">
+        ${notifs}
+        ${notifHistory.length ? '<button class="cal-clear" id="cal-clear">Очистить всё</button>' : ''}
+      </div>
       <div class="cal-bottom">
         <div class="cal-time">${now.toLocaleTimeString('ru-RU')}</div>
         <div class="cal-dow">${now.toLocaleDateString('ru-RU',{weekday:'long', day:'numeric', month:'long', year:'numeric'})}</div>
         <div class="cal-head">
           <span class="cal-mname">${months[m]} ${y}</span>
           <div class="cal-nav">
-            <button id="cal-prev">${I['back']}</button>
-            <button id="cal-next">${I['fwd']}</button>
+            <button id="cal-prev" title="Предыдущий месяц">${I['back']}</button>
+            <button id="cal-today" title="Сегодня">•</button>
+            <button id="cal-next" title="Следующий месяц">${I['fwd']}</button>
           </div>
         </div>
-        <div class="cal-grid">${cells}</div>
+        <div class="cal-grid" id="cal-grid">${cells}</div>
       </div>`;
     $('#cal-prev').addEventListener('click', ()=>{ this.calMonth--; if(this.calMonth<0){this.calMonth=11;this.calYear--;} this.renderCal(); });
     $('#cal-next').addEventListener('click', ()=>{ this.calMonth++; if(this.calMonth>11){this.calMonth=0;this.calYear++;} this.renderCal(); });
+    const todayBtn = $('#cal-today');
+    if(todayBtn) todayBtn.addEventListener('click', ()=>{ this.calMonth=new Date().getMonth(); this.calYear=new Date().getFullYear(); this.renderCal(); });
+    const clr = $('#cal-clear');
+    if(clr) clr.addEventListener('click', ()=>{ notifHistory.length=0; this.renderCal(); });
+    // выбор дня
+    this.selDay = this.selDay || {d:now.getDate(), m:now.getMonth(), y:now.getFullYear()};
+    $('#cal-grid').querySelectorAll('.cg-day:not(.dim)').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        $('#cal-grid').querySelectorAll('.cg-day').forEach(x=>x.classList.remove('picked'));
+        el.classList.add('picked');
+      });
+      const dd = +el.textContent;
+      if(this.selDay.d===dd && this.selDay.m===m && this.selDay.y===y) el.classList.add('picked');
+    });
+    // свайп для перелистывания месяцев
+    const grid = $('#cal-grid');
+    grid.onpointerdown = (e)=>{ this._swx = e.clientX; };
+    grid.onpointerup = (e)=>{
+      const dx = e.clientX - (this._swx??e.clientX);
+      if(Math.abs(dx) > 44){ dx < 0 ? $('#cal-next').click() : $('#cal-prev').click(); }
+    };
   },
 
   /* ==== панель поиска ==== */
+  /* полный список приложений (закреплённые + установленные + системные) */
+  allApps(){
+    return [...new Set([...START_PINNED, ...S.data.installed, ...Object.keys(APPS).filter(a=>APPS[a].pre)])].filter(a=>APPS[a]);
+  },
+
   renderSearch(q){
     const body = $('#sp-body');
     const query = (q||'').trim().toLowerCase();
-    const all = [...new Set([...START_PINNED, ...S.data.installed])].filter(a=>APPS[a]);
+    const all = this.allApps();
     let html='';
     if(!query){
       html = `<div class="sp-group">Лучшее соответствие</div>` +
@@ -876,7 +969,53 @@ function initSystem(){
   UI.renderIcons();
   UI.initMarquee();
   UI.renderTaskbar();
-  setInterval(()=>UI.renderTaskbar(), 5000);
+  setInterval(()=>UI.updateTray(), 1000);   // часы и батарея без перерисовки панели
+
+  /* ---- Фикс «дырки» при открытой клавиатуре ----
+     Экран всегда ровно по видимой области (visualViewport),
+     панель задач прижата к видимой нижней кромке. */
+  const fitViewport = ()=>{
+    const vv = window.visualViewport;
+    const scr = $('#screen');
+    if(vv){
+      scr.style.height = Math.round(vv.height)+'px';
+      scr.style.width  = Math.round(vv.width)+'px';
+    } else {
+      scr.style.height = '100vh';
+      scr.style.width = '100%';
+    }
+  };
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', fitViewport);
+    window.visualViewport.addEventListener('scroll', fitViewport);
+  }
+  window.addEventListener('orientationchange', ()=>setTimeout(fitViewport, 120));
+  fitViewport();
+
+  // при фокусе на поле ввода — мягко поднять его над клавиатурой
+  document.addEventListener('focusin', e=>{
+    if(e.target.matches('input, textarea')){
+      setTimeout(()=>{ try{ e.target.scrollIntoView({block:'nearest', behavior:'smooth'}); }catch(_){} }, 260);
+    }
+  });
+
+  /* контекстное меню на пустом месте панели задач */
+  $('#taskbar').addEventListener('contextmenu', e=>{
+    if(e.target.closest('.tbtn-tb') || e.target.closest('.tb-ibtn') || e.target.closest('.tb-tray-btn') || e.target.closest('.tb-clock')) return;
+    e.preventDefault();
+    Ctx.build([
+      {label:'Диспетчер задач', icon:I.taskmgr, action:()=>WM.open('taskmgr')},
+      {label:'Параметры панели задач', icon:I.settings, action:()=>WM.open('settings',{page:'taskbar'})},
+      '-',
+      {label:'Показать рабочий стол', icon:I.pc, action:()=>{
+        let any=false; WM.wins.forEach(w=>{ if(!w.min) any=true; });
+        WM.wins.forEach(w=>{ any ? WM.minimize(w.id) : WM.restore(w.id); });
+      }},
+    ], e.clientX-60, innerHeight-170);
+  });
+
+  // при любом изменении состояния — обновить трей (батарея и т.д.)
+  S.on(()=>UI.updateTray());
 
   // первый жест — оживить аудио
   document.addEventListener('pointerdown', ()=>AudioFX.ensure(), {once:true});

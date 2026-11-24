@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#101010">
 <title>Windows 11</title>
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="3" y="3" width="19" height="19" fill="%232FA9F2"/><rect x="26" y="3" width="19" height="19" fill="%232FA9F2"/><rect x="3" y="26" width="19" height="19" fill="%232FA9F2"/><rect x="26" y="26" width="19" height="19" fill="%232FA9F2"/></svg>'>
@@ -47,7 +47,7 @@
     <div class="tb-r">
       <button class="tb-ibtn tb-tray" id="tb-chev" title="Скрытые значки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 5 6-5"/></svg></button>
       <button class="tb-tray-btn" id="tb-status" title="Сеть, звук, батарея">
-        <span class="tray-wifi"></span><span class="tray-vol"></span><span class="tray-bat"></span>
+        <span class="tray-wifi"></span><span class="tray-vol"></span><span class="tray-bat"></span><b class="tray-bat-pct">86%</b>
       </button>
       <button class="tb-clock" id="tb-clock"><span id="tb-time">00:00</span><span id="tb-date">01.01.2026</span></button>
       <button class="show-desk" id="tb-showdesk" title="Показать рабочий стол"></button>
@@ -113,6 +113,7 @@
 
 </div>
 <script src="js/data.js"></script>
+<script src="js/icons2.js"></script>
 <script src="js/core.js"></script>
 <script src="js/apps.js"></script>
 <script src="js/store.js"></script>
