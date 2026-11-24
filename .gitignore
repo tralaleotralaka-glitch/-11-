@@ -1,0 +1,15 @@
+# Gradle / Android
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/app/debug.keystore
+android/.idea/
+*.iml
+
+# Node / python
+node_modules/
+__pycache__/
+
+# Сборка
+dist/
