@@ -416,7 +416,7 @@ const UI = {
     const rows = Math.max(3, Math.floor((vh-16)/100));
     const cell = {x:96, y:100};
     list.forEach((item, i)=>{
-      const pos = S.data.iconPos[item.id] || {x: 10 + Math.floor(i/rows)*cell.x, y: 10 + (i%rows)*cell.y};
+      const pos = S.data.iconPos[item.id] ? {...S.data.iconPos[item.id]} : {x: 10 + Math.floor(i/rows)*cell.x, y: 10 + (i%rows)*cell.y};
       const el = document.createElement('div');
       el.className = 'dicon';
       el.dataset.id = item.id;
@@ -446,6 +446,7 @@ const UI = {
           const nx = Math.max(2, Math.round((ox+e.clientX-sx)/cell.x)*cell.x+10);
           const ny = Math.max(2, Math.min(vh-104, Math.round((oy+e.clientY-sy)/cell.y)*cell.y+10));
           el.style.left = nx+'px'; el.style.top = ny+'px';
+          pos.x = nx; pos.y = ny;
           S.data.iconPos[item.id] = {x:nx, y:ny};
           S.changed();
         } else if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)<=4){

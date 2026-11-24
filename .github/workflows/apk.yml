@@ -8,7 +8,7 @@ on:
     types: [ build-apk ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -52,3 +52,16 @@ jobs:
           path: dist/Windows11.apk
           if-no-files-found: error
           retention-days: 90
+
+      - name: Commit APK into the repository
+        run: |
+          git config user.name "apk-bot"
+          git config user.email "apk-bot@users.noreply.github.com"
+          cp dist/Windows11.apk Windows11.apk
+          git add Windows11.apk
+          if git diff --cached --quiet; then
+            echo "APK не изменился — коммит не требуется"
+          else
+            git commit -m "Сборка APK [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
