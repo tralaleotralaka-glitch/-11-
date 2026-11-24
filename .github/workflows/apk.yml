@@ -70,19 +70,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cat > /tmp/notes.md <<'EOF'
+          Готовый APK: Windows 11 (веб-клон) в WebView-обёртке.
+
+          ## Установка
+          1. Скачайте **Windows11.apk** ниже (раздел Assets)
+          2. Откройте файл на Android-телефоне
+          3. Разрешите установку из неизвестных источников, если спросит
+          4. Значок «Windows 11» появится в меню приложений
+
+          Требуется Android 7.0+ (API 24). Размер ~2 МБ. Обновляется автоматически при каждом push.
+          EOF
+          sed -i 's/^          //' /tmp/notes.md
           gh release view apk-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
           gh release create apk-latest \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Windows 11 — APK (скачать)" \
-            --notes "Готовый APK: Windows 11 (веб-клон) в WebView-обёртке.
-
-## Установка
-1. Скачайте **Windows11.apk** ниже (раздел Assets)
-2. Откройте файл на Android-телефоне
-3. Разрешите установку из неизвестных источников, если спросит
-4. Значок «Windows 11» появится в меню приложений
-
-Требуется Android 7.0+ (API 24). Размер ~2 МБ. Обновляется автоматически при каждом push."
+            --notes-file /tmp/notes.md
           gh release upload apk-latest dist/Windows11.apk --repo "$GITHUB_REPOSITORY" --clobber
           echo "Release URL: $(gh release view apk-latest --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
