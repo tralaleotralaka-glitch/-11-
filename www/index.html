@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#101010">
+<title>Windows 11</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="3" y="3" width="19" height="19" fill="%232FA9F2"/><rect x="26" y="3" width="19" height="19" fill="%232FA9F2"/><rect x="3" y="26" width="19" height="19" fill="%232FA9F2"/><rect x="26" y="26" width="19" height="19" fill="%232FA9F2"/></svg>'>
+<link rel="stylesheet" href="css/win11.css">
+</head>
+<body>
+<div id="screen">
+
+  <!-- Экран загрузки -->
+  <div id="boot">
+    <div class="boot-logo"></div>
+    <div class="boot-spin"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
+
+  <!-- Экран блокировки -->
+  <div id="lock">
+    <div class="lk-time">00:00</div>
+    <div class="lk-date">1 января</div>
+    <div class="lk-hint">Нажмите, чтобы войти</div>
+  </div>
+
+  <!-- Рабочий стол -->
+  <div id="desktop">
+    <div id="wallpaper"></div>
+    <div id="icons"></div>
+    <div id="marquee"></div>
+    <div id="windows"></div>
+    <div id="snap-ghost"></div>
+  </div>
+
+  <!-- Панель задач -->
+  <div id="taskbar">
+    <div class="tb-c">
+      <button class="tb-ibtn" id="tb-start" title="Пуск"></button>
+      <button class="tb-search-pill" id="tb-search"><span class="sp-ico"></span><span class="sp-text">Поиск</span><span class="pill-weather" id="tb-weather" title="Виджеты"></span></button>
+      <button class="tb-ibtn" id="tb-tasks" title="Представление задач" style="display:none"></button>
+      <div id="tb-apps"></div>
+    </div>
+    <div class="tb-r">
+      <button class="tb-ibtn tb-tray" id="tb-chev" title="Скрытые значки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 5 6-5"/></svg></button>
+      <button class="tb-tray-btn" id="tb-kbd" title="Сенсорная клавиатура"><span class="tray-kbd"></span></button>
+      <button class="tb-tray-btn" id="tb-status" title="Сеть, звук, батарея">
+        <span class="tray-wifi"></span><span class="tray-vol"></span><span class="tray-bat"></span><b class="tray-bat-pct">86%</b>
+      </button>
+      <button class="tb-clock" id="tb-clock"><span id="tb-time">00:00</span><span id="tb-date">01-01-2026</span></button>
+      <button class="tb-ibtn tb-bell" id="tb-bell" title="Уведомления"></button>
+      <button class="show-desk" id="tb-showdesk" title="Показать рабочий стол"></button>
+    </div>
+  </div>
+
+  <!-- Пуск -->
+  <div id="start" class="flyout">
+    <div class="st-search"><span class="sp-ico"></span><input id="st-inp" type="text" placeholder="Введите здесь текст для поиска" spellcheck="false"></div>
+    <div class="st-body">
+      <div class="st-pinned">
+        <div class="st-sec"><span>Закреплено</span><button class="st-allbtn" id="st-all">Все приложения <b>›</b></button></div>
+        <div class="st-grid" id="st-grid"></div>
+        <div class="st-dots" id="st-dots"></div>
+      </div>
+      <div class="st-reco">
+        <div class="st-sec"><span>Рекомендуем</span><button class="st-allbtn" id="st-more">Ещё <b>›</b></button></div>
+        <div class="st-reco-list" id="st-reco"></div>
+      </div>
+      <div class="st-searchview" id="st-searchresults"></div>
+    </div>
+    <div class="st-allview" id="st-allview">
+      <div class="st-sec"><span>Все приложения</span><button class="st-allbtn" id="st-back">‹ Назад</button></div>
+      <div class="st-all-list" id="st-all-list"></div>
+    </div>
+    <div class="st-foot">
+      <button class="st-user"><span class="st-ava"></span><span>Пользователь</span></button>
+      <button class="st-power" id="st-power" title="Питание"></button>
+    </div>
+  </div>
+
+  <!-- Быстрые действия -->
+  <div id="qs" class="flyout"></div>
+
+  <!-- Календарь и уведомления -->
+  <div id="cal" class="flyout"></div>
+
+  <!-- Виджеты -->
+  <div id="widgets" class="flyout"></div>
+
+  <!-- Поиск -->
+  <div id="searchpanel" class="flyout">
+    <div class="sp-head"><span class="sp-ico"></span><input id="sp-inp" type="text" placeholder="Введите текст для поиска приложений, файлов и параметров" spellcheck="false"></div>
+    <div class="sp-body" id="sp-body"></div>
+  </div>
+
+  <!-- Скрытые значки -->
+  <div id="trayfly" class="flyout"></div>
+
+  <!-- Представление задач -->
+  <div id="taskview">
+    <div class="tv-grid" id="tv-grid"></div>
+    <div class="tv-deskbar"><span class="tv-desk active">Рабочий стол 1</span><span class="tv-desk">+ Новый рабочий стол</span></div>
+  </div>
+
+  <!-- Контекстное меню -->
+  <div id="ctx"></div>
+
+  <!-- Встроенная сенсорная клавиатура -->
+  <div id="osk"></div>
+
+  <!-- Уведомления -->
+  <div id="toasts"></div>
+
+  <!-- Оверлеи -->
+  <div id="night"></div>
+  <div id="dim"></div>
+  <div id="sleep"></div>
+  <div id="shutdown"><div class="sd-spin"><i></i><i></i><i></i><i></i><i></i></div><div class="sd-text">Завершение работы</div></div>
+  <div id="poweroff"><div class="po-logo"></div><div class="po-text">Питание выключено</div><div class="po-hint">Нажмите, чтобы включить</div></div>
+
+</div>
+<script src="js/data.js"></script>
+<script src="js/icons2.js"></script>
+<script src="js/keyboard.js"></script>
+<script src="js/core.js"></script>
+<script src="js/apps.js"></script>
+<script src="js/store.js"></script>
+<script src="js/settings.js"></script>
+</body>
+</html>
