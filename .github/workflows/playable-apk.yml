@@ -57,8 +57,22 @@ jobs:
         working-directory: .engine-build
         run: |
           bash scripts/languagelist_updater.sh
+          set -o pipefail
           gradle :app_pojavlauncher:assembleDebug --no-daemon --stacktrace \
-            -Dorg.gradle.java.installations.paths="$JAVA_HOME_8_X64,$JAVA_HOME_17_X64"
+            -Dorg.gradle.java.installations.paths="$JAVA_HOME_8_X64,$JAVA_HOME_17_X64" 2>&1 | tee ../dist/engine-build.log
+      - name: Expose build failure diagnostics
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('dist/engine-build.log')
+          if path.is_file():
+              text = path.read_text(errors='replace')
+              start = text.find('* What went wrong:')
+              snippet = text[start:start+24000] if start >= 0 else text[-24000:]
+              snippet = snippet.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error title=Engine build diagnostics::' + snippet)
+          PY
       - name: Validate runtime and renderer contents
         run: |
           cp .engine-build/app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk dist/JavaLauncher-0.4.apk
