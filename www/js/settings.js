@@ -232,7 +232,17 @@ APPS.settings.render = function(body, win){
     }
     else if(cur==='person'){
       pageEl.innerHTML = `<div class="se-h1">Персонализация</div>
-        <div class="se-card col"><div class="sc-title" style="font-weight:600">Фон (обои)</div><div class="se-wallpapers">${WALLPAPERS.map(w=>`<button class="se-wp ${d.wallpaper===w.id?'on':''}" data-wp="${w.id}" style="background-image:url(${w.url})" title="${esc(w.name)}"></button>`).join('')}</div></div>
+        <div class="se-card col"><div class="sc-title" style="font-weight:600">Фон (обои)</div><div class="se-wallpapers">${WALLPAPERS.map(w=>`<button class="se-wp ${d.wallpaper===w.id && !d.wallpaperCustom?'on':''}" data-wp="${w.id}" style="background-image:url(${w.url})" title="${esc(w.name)}"></button>`).join('')}</div></div>
+        <div class="se-card col" id="se-custom-card">
+          <div class="sc-body"><div class="sc-title" style="font-weight:600">Фото с устройства</div>
+          <div class="sc-sub">Выберите любое фото с телефона или своё изображение — оно станет фоном рабочего стола</div></div>
+          <div class="se-wallpapers" id="se-phone-photos"></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn small" id="se-pickfile">${I.gallery} Выбрать файл…</button>
+            ${d.wallpaperCustom?'<button class="btn small" id="se-custreset">Сбросить своё фото</button>':''}
+          </div>
+          <input type="file" id="se-file" accept="image/*" style="display:none">
+        </div>
         <div class="se-card col"><div class="sc-title" style="font-weight:600">Режим приложений и Windows</div>
           <div class="seg" style="margin-top:10px;max-width:260px">
             <button data-th="light" class="${d.theme==='light'?'on':''}">Светлый</button>
@@ -242,9 +252,61 @@ APPS.settings.render = function(body, win){
           <div class="se-swatches">${ACCENTS.map(c=>`<button class="se-sw ${d.accent===c?'on':''}" data-ac="${c}" style="background:${c}"></button>`).join('')}</div></div>
         <div class="se-card se-toggle-row">${`<span class="sc-ico">${I.globe}</span>`}<div class="sc-body"><div class="sc-title">Эффекты прозрачности</div><div class="sc-sub">Окна и поверхности отображаются полупрозрачными</div></div><button class="switch ${d.transparency?'on':''}" id="se-tr"></button></div>`;
       pageEl.querySelectorAll('.se-wp').forEach(b=>b.addEventListener('click', ()=>{
-        d.wallpaper=b.dataset.wp; S.changed(); applyWallpaper(); render();
+        d.wallpaper=b.dataset.wp; d.wallpaperCustom=null; S.changed(); applyWallpaper(); render();
         toast('Персонализация', 'Обои обновлены', 'photos');
       }));
+
+      /* ---- фото с телефона / свои файлы ---- */
+      const setCustomPath = p=>{
+        d.wallpaperCustom = {path:p}; d.wallpaper='__custom'; S.changed(); applyWallpaper();
+        toast('Персонализация', 'Обои установлены из вашего фото', 'photos');
+        render();
+      };
+      const imgGrid = pageEl.querySelector('#se-phone-photos');
+      if(Bridge.available){
+        (function loadPhonePhotos(){
+          let items = null;
+          for(const folder of ['phone:/DCIM/Camera','phone:/DCIM','phone:/Pictures','phone:/Download','phone:/']){
+            const r = Bridge.list(folder);
+            if(r && r.ok){
+              const imgs = r.items.filter(it=>!it.d && /\.(jpg|jpeg|png|webp|bmp)$/i.test(it.n));
+              if(imgs.length){ items = imgs.slice(0,12); break; }
+            }
+          }
+          if(!items){
+            imgGrid.innerHTML = '<div class="sc-sub" style="margin-top:10px">Фото на телефоне не найдены. Сфотографируйте что-нибудь камерой — или выберите файл ниже.</div>';
+            return;
+          }
+          imgGrid.innerHTML = items.map((it,i)=>`<button class="se-wp ${d.wallpaperCustom&&d.wallpaperCustom.path===it.p?'on':''}" data-path="${esc(it.p)}" data-i="${i}" title="${esc(it.n)}"><span class="se-wp-thumb" data-p="${esc(it.p)}"></span></button>`).join('');
+          imgGrid.querySelectorAll('.se-wp-thumb').forEach(el=>{
+            const r = Bridge.readThumb(el.dataset.p);
+            if(r && r.ok) el.style.backgroundImage = `url(data:${r.mime};base64,${r.b64})`;
+            else el.parentElement.style.display='none';
+          });
+          imgGrid.querySelectorAll('.se-wp').forEach(b=>b.addEventListener('click', ()=>setCustomPath(b.dataset.path)));
+        })();
+      } else {
+        imgGrid.innerHTML = '<div class="sc-sub" style="margin-top:10px">В APK-версии здесь появятся фото из вашего телефона (DCIM, Pictures). В браузере — выберите файл кнопкой ниже.</div>';
+      }
+      pageEl.querySelector('#se-pickfile').addEventListener('click', ()=>pageEl.querySelector('#se-file').click());
+      pageEl.querySelector('#se-file').addEventListener('change', function(){
+        const f = this.files && this.files[0];
+        if(!f) return;
+        const rd = new FileReader();
+        rd.onload = ()=>{
+          d.wallpaperCustom = {data:rd.result}; d.wallpaper='__custom';
+          try{ S.changed(); }catch(e){}
+          applyWallpaper();
+          toast('Персонализация', 'Обои установлены из выбранного файла', 'photos');
+          render();
+        };
+        rd.readAsDataURL(f);
+      });
+      const rst = pageEl.querySelector('#se-custreset');
+      if(rst) rst.addEventListener('click', ()=>{
+        d.wallpaperCustom=null; d.wallpaper='bloom'; S.changed(); applyWallpaper(); render();
+      });
+
       pageEl.querySelectorAll('[data-th]').forEach(b=>b.addEventListener('click', ()=>{
         d.theme=b.dataset.th; S.changed(); applyTheme(); applyTransparency(); render();
       }));

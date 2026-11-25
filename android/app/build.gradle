@@ -11,8 +11,8 @@ android {
         applicationId "com.arena.win11"
         minSdk 24
         targetSdk 34
-        versionCode 4
-        versionName "11.3"
+        versionCode 5
+        versionName "11.4"
     }
 
     signingConfigs {

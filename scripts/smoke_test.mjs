@@ -135,6 +135,25 @@ try {
   console.log('  скрылась:', !w.eval('KB.visible'));
 } catch (e) { errors.push('kb: ' + (e.stack||e.message)); }
 
+// Виджеты, тема в QS, свои обои
+try {
+  console.log('— ВИДЖЕТЫ / ТЕМА / ОБОИ —');
+  doc.querySelector('#tb-weather').click();
+  await sleep(60);
+  console.log('  панель виджетов:', doc.querySelector('#widgets').classList.contains('open'), '| карточек:', count('#widgets .wg-card'));
+  doc.querySelector('#tb-bell').click();
+  await sleep(60);
+  console.log('  колокольчик → календарь:', doc.querySelector('#cal').classList.contains('open'));
+  doc.querySelector('#tb-status').click();
+  await sleep(50);
+  w.eval(`document.querySelector('.qs-tile[data-k="theme"]').click()`);
+  console.log('  тема переключилась на:', w.eval('S.data.theme'));
+  w.eval(`document.querySelector('.qs-tile[data-k="theme"]').click()`);
+  w.eval(`S.data.wallpaperCustom={data:'data:image/png;base64,iVBORw0KGgo='}; S.data.wallpaper='__custom'; applyWallpaper();`);
+  console.log('  свои обои применились:', w.eval(`document.querySelector('#wallpaper').style.backgroundImage`).includes('iVBOR'));
+  w.eval(`S.data.wallpaperCustom=null; S.data.wallpaper='bloom'; applyWallpaper();`);
+} catch (e) { errors.push('widgets/qs: ' + (e.stack||e.message)); }
+
 console.log('\n=== ОШИБКИ ===');
 console.log(errors.length ? errors.join('\n') : 'нет ✓');
 process.exit(errors.length ? 1 : 0);

@@ -84,7 +84,7 @@ const APPS = {
   music:     {name:'Медиаплеер',      icon:'music',    w:780, h:520, cat:'Музыка',        dev:'Microsoft Corporation', size:'22,8 МБ', rating:4.3, revs:7752,  desc:'Локальный медиаплеер с плейлистом из спокойных synth-композиций, сгенерированных прямо в приложении.'},
   tasks:     {name:'Задачи',          icon:'tasks',    w:580, h:560, cat:'Продуктивность',dev:'Tasks Team',            size:'7,1 МБ',  rating:4.4, revs:2901,  desc:'Простой менеджер задач: добавляйте дела, отмечайте выполненные — список сохраняется между сеансами.'},
 };
-const TASKBAR_PINNED = ['edge','explorer','store','settings'];
+const TASKBAR_PINNED = ['explorer','settings'];
 const START_PINNED = ['edge','explorer','store','settings','notepad','calc','photos','paint','terminal','snake','mines','weather','clockapp','music','tasks'];
 
 const WALLPAPERS = [

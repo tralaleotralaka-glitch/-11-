@@ -125,7 +125,7 @@ APPS.explorer.render = function(body, win){
       if(kind === 'folder' || !ext){ navigate(raw); return; }
       if(['jpg','jpeg','png','gif','webp','bmp'].includes(ext)){
         const r = Bridge.readB64(raw);
-        if(r && r.ok){ WM.open('photos', {dataUrl:`data:${r.mime};base64,${r.b64}`, name:n}); UI.addRecent(n, 'photos', 'photos'); }
+        if(r && r.ok){ WM.open('photos', {dataUrl:`data:${r.mime};base64,${r.b64}`, name:n, path:raw}); UI.addRecent(n, 'photos', 'photos'); }
         else toast('Проводник', 'Не удалось открыть «'+n+'»', 'phone');
       } else if(['txt','log','md','json','xml','csv'].includes(ext)){
         const r = Bridge.readText(raw);
@@ -522,7 +522,7 @@ APPS.photos.render = function(body, win, args){
   const items = [...WALLPAPERS.map(w=>({name:w.name, url:w.url, wallpaper:w.id})), ...PHOTO_GRADS.map(g=>({name:g.name, url:g.url}))];
   let viewing = args && args.src ? items.findIndex(i=>i.url===args.src) : -1;
   if(viewing<0 && args && args.src) items.push({name:'Изображение.jpg', url:args.src});
-  if(args && args.dataUrl){ items.push({name:args.name||'Изображение.jpg', url:args.dataUrl}); viewing = items.length-1; }
+  if(args && args.dataUrl){ items.push({name:args.name||'Изображение.jpg', url:args.dataUrl, path:args.path, custom:true}); viewing = items.length-1; }
   function renderGrid(){
     body.innerHTML = `<div class="ph-root">
       <div class="ph-toolbar"><span class="tb-title">Коллекция</span><span style="flex:1"></span><span>${items.length} элементов</span></div>
@@ -542,7 +542,7 @@ APPS.photos.render = function(body, win, args){
           <button class="btn small ph-prev">‹</button>
           <span style="font-size:12.5px">${esc(it.name)} (${viewing+1}/${items.length})</span>
           <button class="btn small ph-next">›</button>
-          ${it.wallpaper?'<button class="btn small acc ph-wall">Сделать фоном</button>':''}
+          ${(it.wallpaper||it.custom)?'<button class="btn small acc ph-wall">Сделать фоном</button>':''}
         </div>
       </div>
     </div>`;
@@ -550,7 +550,17 @@ APPS.photos.render = function(body, win, args){
     body.querySelector('.ph-prev').addEventListener('click', ()=>{ viewing=(viewing-1+items.length)%items.length; renderView(); });
     body.querySelector('.ph-next').addEventListener('click', ()=>{ viewing=(viewing+1)%items.length; renderView(); });
     const wbtn = body.querySelector('.ph-wall');
-    if(wbtn) wbtn.addEventListener('click', ()=>{ S.data.wallpaper=it.wallpaper; S.changed(); applyWallpaper(); toast('Фотографии','Обои изменены: '+it.name,'photos'); });
+    if(wbtn) wbtn.addEventListener('click', ()=>{
+      if(it.wallpaper){
+        S.data.wallpaper = it.wallpaper; S.data.wallpaperCustom = null;
+      } else if(it.path){
+        S.data.wallpaperCustom = {path:it.path}; S.data.wallpaper = '__custom';
+      } else {
+        S.data.wallpaperCustom = {data:it.url}; S.data.wallpaper = '__custom';
+      }
+      S.changed(); applyWallpaper();
+      toast('Фотографии', 'Обои изменены: '+it.name, 'photos');
+    });
   }
   if(viewing>=0) renderView(); else renderGrid();
 };

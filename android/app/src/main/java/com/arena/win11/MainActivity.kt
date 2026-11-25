@@ -139,6 +139,28 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun readThumb(phonePath: String): String {
+            return try {
+                val f = File(resolvePhonePath(phonePath) ?: return """{"ok":false,"error":"bad-path"}""")
+                if (!f.exists()) return """{"ok":false,"error":"not-found"}"""
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(f.absolutePath, bounds)
+                if (bounds.outWidth <= 0) return """{"ok":false,"error":"not-image"}"""
+                var sample = 1
+                while (bounds.outWidth / sample > 320 || bounds.outHeight / sample > 320) sample *= 2
+                val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath, opts)
+                    ?: return """{"ok":false,"error":"decode"}"""
+                val bos = ByteArrayOutputStream()
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 72, bos)
+                bmp.recycle()
+                """{"ok":true,"b64":"${Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)}","mime":"image/jpeg"}"""
+            } catch (e: Exception) {
+                """{"ok":false,"error":"${jsonStr(e.message ?: "?")}"}"""
+            }
+        }
+
+        @JavascriptInterface
         fun readText(phonePath: String): String {
             return try {
                 val f = File(resolvePhonePath(phonePath) ?: return """{"ok":false,"error":"bad-path"}""")

@@ -35,13 +35,10 @@
 
   <!-- Панель задач -->
   <div id="taskbar">
-    <button class="tb-weather" id="tb-weather" title="Погода">
-      <span class="tbw-ico"></span><span class="tbw-temp">+3°</span><span class="tbw-desc">Облачно</span>
-    </button>
     <div class="tb-c">
       <button class="tb-ibtn" id="tb-start" title="Пуск"></button>
-      <button class="tb-search-pill" id="tb-search"><span class="sp-ico"></span><span class="sp-text">Поиск</span></button>
-      <button class="tb-ibtn" id="tb-tasks" title="Представление задач"></button>
+      <button class="tb-search-pill" id="tb-search"><span class="sp-ico"></span><span class="sp-text">Поиск</span><span class="pill-weather" id="tb-weather" title="Виджеты"></span></button>
+      <button class="tb-ibtn" id="tb-tasks" title="Представление задач" style="display:none"></button>
       <div id="tb-apps"></div>
     </div>
     <div class="tb-r">
@@ -50,7 +47,8 @@
       <button class="tb-tray-btn" id="tb-status" title="Сеть, звук, батарея">
         <span class="tray-wifi"></span><span class="tray-vol"></span><span class="tray-bat"></span><b class="tray-bat-pct">86%</b>
       </button>
-      <button class="tb-clock" id="tb-clock"><span id="tb-time">00:00</span><span id="tb-date">01.01.2026</span></button>
+      <button class="tb-clock" id="tb-clock"><span id="tb-time">00:00</span><span id="tb-date">01-01-2026</span></button>
+      <button class="tb-ibtn tb-bell" id="tb-bell" title="Уведомления"></button>
       <button class="show-desk" id="tb-showdesk" title="Показать рабочий стол"></button>
     </div>
   </div>
@@ -85,6 +83,9 @@
 
   <!-- Календарь и уведомления -->
   <div id="cal" class="flyout"></div>
+
+  <!-- Виджеты -->
+  <div id="widgets" class="flyout"></div>
 
   <!-- Поиск -->
   <div id="searchpanel" class="flyout">

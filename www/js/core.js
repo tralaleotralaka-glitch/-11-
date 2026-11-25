@@ -79,6 +79,10 @@ const Bridge = {
     if(!this.available) return {ok:false, error:'no-bridge'};
     try{ return JSON.parse(AndroidBridge.readFileB64(path)); }catch(e){ return {ok:false, error:'bridge'}; }
   },
+  readThumb(path){
+    if(!this.available) return {ok:false, error:'no-bridge'};
+    try{ return JSON.parse(AndroidBridge.readThumb(path)); }catch(e){ return {ok:false, error:'bridge'}; }
+  },
   readText(path){
     if(!this.available) return {ok:false, error:'no-bridge'};
     try{ return JSON.parse(AndroidBridge.readText(path)); }catch(e){ return {ok:false, error:'bridge'}; }
@@ -420,9 +424,13 @@ const UI = {
 
   /* ==== панель задач ==== */
   renderTaskbar(){
-    // выравнивание и виджет погоды
     $('#taskbar').classList.toggle('left', S.data.tbAlign === 'left');
-    $('#tb-weather').style.display = (S.data.tbAlign === 'left' || S.data.weatherWidget === false) ? 'none' : '';
+    const wEl = $('#tb-weather');
+    if(wEl){
+      wEl.style.display = S.data.weatherWidget === false ? 'none' : '';
+      const t = WEATHER_CITIES[new Date().getDate() % WEATHER_CITIES.length];
+      wEl.innerHTML = `<span class="pw-ico">${I.weather}</span><b>${t.base > 0 ? '+' : ''}${t.base}°</b>`;
+    }
     const host = $('#tb-apps');
     const running = [...new Set([...WM.wins.values()].map(w=>w.appId))];
     const order = [...TASKBAR_PINNED.filter(a=>running.includes(a) || true), ...running.filter(a=>!TASKBAR_PINNED.includes(a))];
@@ -461,23 +469,24 @@ const UI = {
     const d = new Date();
     const t = $('#tb-time'); if(!t) return;
     t.textContent = d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
-    $('#tb-date').textContent = d.toLocaleDateString('ru-RU');
+    $('#tb-date').textContent = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
     const pct = Battery.pct();
     const el = document.querySelector('.tray-bat-pct');
     if(el) el.textContent = pct + '%';
   },
 
-  /* ==== рабочий стол: значки ==== */
+  /* ==== рабочий стол: значки (с ярлыками, как в Windows) ==== */
   renderIcons(){
     const host = $('#icons');
     host.innerHTML = '';
     const list = [
-      {id:'bin', name:'Корзина', icon:'bin'},
-      {id:'store', name:'Microsoft Store', icon:'store'},
-      {id:'explorer', name:'Проводник', icon:'explorer'},
-      {id:'edge', name:'Microsoft Edge', icon:'edge'},
-      ...S.data.installed.map(id=>({id, name:APPS[id]?APPS[id].name:id, icon:APPS[id]?APPS[id].icon:'apps'})),
+      {id:'mypc', name:'Этот ПК', icon:'pc', app:'explorer'},
+      {id:'bin', name:'Корзина', icon:'bin', app:'bin'},
+      {id:'store', name:'Microsoft Store', icon:'store', app:'store', arrow:true},
+      {id:'edge', name:'Microsoft Edge', icon:'edge', app:'edge', arrow:true},
+      ...S.data.installed.map(id=>({id, name:APPS[id]?APPS[id].name:id, icon:APPS[id]?APPS[id].icon:'apps', app:id, arrow:true})),
     ];
+    const arrowBadge = item => item.arrow ? `<span class="sc-arrow-badge"><svg viewBox="0 0 24 24"><rect x="1" y="1" width="17" height="17" rx="4" fill="#fff"/><path d="M6.5 13l4.5-4.5M8 6.8h5.8v5.8" stroke="#0078D4" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>` : '';
     const vh = innerHeight-48;
     const rows = Math.max(3, Math.floor((vh-16)/100));
     const cell = {x:96, y:100};
@@ -487,9 +496,9 @@ const UI = {
       el.className = 'dicon';
       el.dataset.id = item.id;
       el.style.left = pos.x+'px'; el.style.top = pos.y+'px';
-      el.innerHTML = `<div class="di-ico">${I[item.icon]||I['apps']}</div><div class="di-label">${esc(item.name)}</div>`;
+      el.innerHTML = `<div class="di-ico">${I[item.icon]||I['apps']}${arrowBadge(item)}</div><div class="di-label">${esc(item.name)}</div>`;
       host.appendChild(el);
-      const open = ()=>WM.open(item.id);
+      const open = ()=>WM.open(item.app||item.id);
       el.addEventListener('dblclick', open);
       let moved=false, sx, sy, ox, oy, dragging=false;
       el.addEventListener('pointerdown', e=>{
@@ -527,11 +536,11 @@ const UI = {
           {label:'Открыть', icon:I['fwd'], action:open},
           '-',
           {label:'Закрепить в панели задач', icon:I['apps'], action:()=>{
-            if(!TASKBAR_PINNED.includes(item.id)){ TASKBAR_PINNED.push(item.id); UI.renderTaskbar(); toast('Панель задач','Приложение закреплено','apps'); }
+            if(!TASKBAR_PINNED.includes(item.app)){ TASKBAR_PINNED.push(item.app); UI.renderTaskbar(); toast('Панель задач','Приложение закреплено','apps'); }
           }},
           {label:'Удалить', icon:I['trash'], disabled:item.id==='bin', action:()=>{
-            if(S.data.installed.includes(item.id)){
-              S.data.installed = S.data.installed.filter(a=>a!==item.id);
+            if(S.data.installed.includes(item.app)){
+              S.data.installed = S.data.installed.filter(a=>a!==item.app);
               delete S.data.iconPos[item.id];
               S.changed(); UI.renderIcons(); toast('Удаление', `«${item.name}» удалено`, 'trash');
             } else toast('Отказано','Этот значок удалить нельзя','lock');
@@ -754,40 +763,50 @@ const UI = {
     });
   },
 
-  /* ==== быстрые действия ==== */
+  /* ==== быстрые действия (как на фото) ==== */
   renderQS(){
     const d = S.data;
     const tiles = [
-      {k:'wifi',  name:'Wi-Fi', sub:d.wifi?'Дом_5G':'Отключено', icon:'wifi',  on:d.wifi},
-      {k:'bt',    name:'Bluetooth', sub:d.bt?'Подключено':'Выключено', icon:'bt', on:d.bt},
-      {k:'air',   name:'В самолёте', sub:'', icon:'plane', on:d.air},
-      {k:'saver', name:'Экономия заряда', sub:'', icon:'leaf', on:d.saver},
-      {k:'night', name:'Ночной свет', sub:'', icon:'moon', on:d.night},
-      {k:'access',name:'Спец. возможности', sub:'', icon:'access', on:false, lock:true},
+      {k:'wifi',  name:'Wi-Fi',       icon:'wifi',   on:d.wifi},
+      {k:'air',   name:'Интернет',    icon:'globe',  on:d.wifi && !d.air},
+      {k:'bt',    name:'Bluetooth',   icon:'bt',     on:d.bt},
+      {k:'nearby',name:'Обмен рядом', icon:'phone',  on:!!d.nearby},
+      {k:'theme', name:'Тема',        icon:'moon',   on:d.theme==='dark'},
+      {k:'access',name:'Доступность', icon:'access', go:true},
     ];
     $('#qs').innerHTML = `
       <div class="qs-tiles">${tiles.map(t=>`
-        <button class="qs-tile ${t.on?'on':''}" data-k="${t.k}" data-lock="${t.lock?1:0}">
-          ${I[t.icon]}<span>${t.name}</span>${t.sub?`<span class="qs-sub">${esc(t.sub)}</span>`:''}
+        <button class="qs-tile ${t.on?'on':''}" data-k="${t.k}">
+          ${I[t.icon]}<span>${t.name}</span>
         </button>`).join('')}</div>
-      <div class="qs-slider">${I['sun']}<input class="wsl" id="qs-bright" type="range" min="15" max="100" value="${d.brightness}"></div>
       <div class="qs-slider">${I['speaker']}<input class="wsl" id="qs-vol" type="range" min="0" max="100" value="${d.volume}"></div>
+      <div class="qs-slider">${I['sun']}<input class="wsl" id="qs-bright" type="range" min="15" max="100" value="${d.brightness}"></div>
       <div class="qs-foot">
         <button class="qs-bat" id="qs-bat" title="Питание и батарея">${I['battery']} ${Battery.pct()}%${Battery.charging?' ⚡':''}</button>
         <div class="qs-footbtns">
-          <button class="qs-fbtn" id="qs-edit" title="Изменить">${I['edit']}</button>
           <button class="qs-fbtn" id="qs-gear" title="Все параметры">${I['gear']}</button>
         </div>
       </div>`;
     const sync = (inp)=>{ inp.style.setProperty('--p', ((inp.value-inp.min)/(inp.max-inp.min)*100)+'%'); };
-    const br = $('#qs-bright'), vl = $('#qs-vol');
-    sync(br); sync(vl);
-    br.addEventListener('input', ()=>{ setBrightness(+br.value); sync(br); });
+    const vl = $('#qs-vol'), br = $('#qs-bright');
+    sync(vl); sync(br);
     vl.addEventListener('input', ()=>{ setVolume(+vl.value); sync(vl); });
+    br.addEventListener('input', ()=>{ setBrightness(+br.value); sync(br); });
     $('#qs').querySelectorAll('.qs-tile').forEach(t=>{
       t.addEventListener('click', ()=>{
-        if(t.dataset.lock==='1'){ toast('Быстрые действия','Специальные возможности — смотрите Параметры','access'); return; }
         const k = t.dataset.k;
+        if(k==='access'){ UI.closeAllFlyouts(); WM.open('settings',{page:'access'}); return; }
+        if(k==='theme'){
+          d.theme = d.theme==='dark' ? 'light' : 'dark';
+          S.changed(); applyTheme(); applyTransparency(); UI.renderQS();
+          toast('Персонализация', d.theme==='dark'?'Тёмная тема включена':'Светлая тема включена', 'moon');
+          return;
+        }
+        if(k==='nearby'){
+          d.nearby = !d.nearby; S.changed(); UI.renderQS();
+          toast('Обмен рядом', d.nearby?'Обмен с ближайшими устройствами включён':'Обмен рядом выключен', 'phone');
+          return;
+        }
         if(k==='air' && !d.air){ d.wifi=false; d.bt=false; d.air=true; }
         else if(k==='air'){ d.air=false; d.wifi=true; }
         else if(k==='wifi' && d.air){ d.air=false; d.wifi=true; }
@@ -796,17 +815,17 @@ const UI = {
         if(k==='wifi') toast('Wi-Fi', d.wifi?'Подключено к Дом_5G':'Wi-Fi отключён', 'wifi');
       });
     });
-    $('#qs-edit').addEventListener('click', ()=>toast('Быстрые действия','Редактирование недоступно в демо','edit'));
     $('#qs-gear').addEventListener('click', ()=>{ UI.closeAllFlyouts(); WM.open('settings'); });
     $('#qs-bat').addEventListener('click', ()=>{ UI.closeAllFlyouts(); WM.open('settings',{page:'power'}); });
   },
 
-  /* ==== календарь ==== */
+  /* ==== календарь (как на фото) ==== */
   calMonth: new Date().getMonth(),
   calYear: new Date().getFullYear(),
   renderCal(){
-    const months=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
-    const dows=['пн','вт','ср','чт','пт','сб','вс'];
+    const months=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+    const mnames=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+    const dows=['п','в','с','ч','п','с','в'];
     const now = new Date();
     const y=this.calYear, m=this.calMonth;
     const first = new Date(y, m, 1);
@@ -825,43 +844,34 @@ const UI = {
 
     const notifs = notifHistory.length
       ? notifHistory.map(n=>`<div class="cal-n-item"><span class="cn-ico">${I[n.icon]||I['bell']}</span><div><div class="cn-title">${esc(n.title)}</div><div class="cn-text">${esc(n.text||'')}</div></div></div>`).join('')
+        + '<button class="cal-clear" id="cal-clear">Очистить всё</button>'
       : `<div class="cal-n-empty">Нет новых уведомлений</div>`;
 
     $('#cal').innerHTML = `
-      <div class="cal-notif">
-        ${notifs}
-        ${notifHistory.length ? '<button class="cal-clear" id="cal-clear">Очистить всё</button>' : ''}
-      </div>
-      <div class="cal-bottom">
-        <div class="cal-time">${now.toLocaleTimeString('ru-RU')}</div>
-        <div class="cal-dow">${now.toLocaleDateString('ru-RU',{weekday:'long', day:'numeric', month:'long', year:'numeric'})}</div>
-        <div class="cal-head">
-          <span class="cal-mname">${months[m]} ${y}</span>
-          <div class="cal-nav">
-            <button id="cal-prev" title="Предыдущий месяц">${I['back']}</button>
-            <button id="cal-today" title="Сегодня">•</button>
-            <button id="cal-next" title="Следующий месяц">${I['fwd']}</button>
-          </div>
+      <div class="cal-top">
+        <div class="cal-today">
+          <div class="cal-date2">${now.toLocaleDateString('ru-RU',{weekday:'long', day:'numeric', month:'long'})}</div>
         </div>
-        <div class="cal-grid" id="cal-grid">${cells}</div>
-      </div>`;
+        <button class="cal-fold" id="cal-fold" title="Свернуть/развернуть уведомления">${I.back.replace('stroke-width="1.8"','stroke-width="2"')}</button>
+      </div>
+      <div class="cal-notif" id="cal-notifs">${notifs}</div>
+      <div class="cal-navrow">
+        <button id="cal-prev" title="Предыдущий месяц">${I['back']}</button>
+        <span class="cal-mname">${mnames[m]} ${y} г.</span>
+        <button id="cal-next" title="Следующий месяц">${I['fwd']}</button>
+      </div>
+      <div class="cal-grid" id="cal-grid">${cells}</div>`;
     $('#cal-prev').addEventListener('click', ()=>{ this.calMonth--; if(this.calMonth<0){this.calMonth=11;this.calYear--;} this.renderCal(); });
     $('#cal-next').addEventListener('click', ()=>{ this.calMonth++; if(this.calMonth>11){this.calMonth=0;this.calYear++;} this.renderCal(); });
-    const todayBtn = $('#cal-today');
-    if(todayBtn) todayBtn.addEventListener('click', ()=>{ this.calMonth=new Date().getMonth(); this.calYear=new Date().getFullYear(); this.renderCal(); });
+    $('#cal-fold').addEventListener('click', ()=>$('#cal').classList.toggle('folded'));
     const clr = $('#cal-clear');
     if(clr) clr.addEventListener('click', ()=>{ notifHistory.length=0; this.renderCal(); });
-    // выбор дня
-    this.selDay = this.selDay || {d:now.getDate(), m:now.getMonth(), y:now.getFullYear()};
     $('#cal-grid').querySelectorAll('.cg-day:not(.dim)').forEach(el=>{
       el.addEventListener('click', ()=>{
         $('#cal-grid').querySelectorAll('.cg-day').forEach(x=>x.classList.remove('picked'));
         el.classList.add('picked');
       });
-      const dd = +el.textContent;
-      if(this.selDay.d===dd && this.selDay.m===m && this.selDay.y===y) el.classList.add('picked');
     });
-    // свайп для перелистывания месяцев
     const grid = $('#cal-grid');
     grid.onpointerdown = (e)=>{ this._swx = e.clientX; };
     grid.onpointerup = (e)=>{
@@ -870,33 +880,88 @@ const UI = {
     };
   },
 
+  /* ==== панель виджетов (погода в поиске) ==== */
+  renderWidgets(){
+    const t = WEATHER_CITIES[new Date().getDate() % WEATHER_CITIES.length];
+    const now = new Date();
+    $('#widgets').innerHTML = `
+      <div class="wg-head">
+        <div><div class="wg-kicker">Виджеты</div><div class="wg-hi">Привет, ${esc(S.data.userName||'Пользователь')}</div></div>
+        <button class="wg-add" id="wg-add" title="Добавить виджет">+</button>
+      </div>
+      <div class="wg-cards">
+        <button class="wg-card wg-weather" id="wg-weather">
+          <span class="wg-wico">${I.weather}</span>
+          <span><div class="wg-wt">${t.base>0?'+':''}${t.base}°</div><div class="wg-ws">${t.name} • ${({sun:'Ясно',cloud:'Облачно',drop:'Дождь',snow:'Снег'})[t.icon]||'Облачно'}</div></span>
+        </button>
+        <div class="wg-card wg-clockcard">
+          <div class="wg-ctime">${now.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</div>
+          <div class="wg-cdate">${now.toLocaleDateString('ru-RU',{weekday:'long', day:'numeric', month:'long'})}</div>
+        </div>
+        <div class="wg-card wg-tips">
+          <div class="wg-t">Советы</div>
+          <button class="wg-tip" data-q="Переводчик">${I.globe}<span>Перевести</span></button>
+          <button class="wg-tip" data-q="История Windows">${I.time}<span>Сегодня в истории</span></button>
+        </div>
+      </div>`;
+    $('#wg-add').addEventListener('click', ()=>toast('Виджеты','Новые виджеты появятся в следующем обновлении','apps'));
+    $('#wg-weather').addEventListener('click', ()=>{ UI.closeAllFlyouts(); WM.open('weather'); });
+    document.querySelectorAll('.wg-tip').forEach(b=>{
+      b.addEventListener('click', ()=>{ WM.open('edge',{query:b.dataset.q}); UI.closeAllFlyouts(); });
+    });
+  },
+
   /* ==== панель поиска ==== */
   /* полный список приложений (закреплённые + установленные + системные) */
   allApps(){
     return [...new Set([...START_PINNED, ...S.data.installed, ...Object.keys(APPS).filter(a=>APPS[a].pre)])].filter(a=>APPS[a]);
   },
 
+  /* ==== панель поиска (две колонки, как на фото) ==== */
   renderSearch(q){
     const body = $('#sp-body');
     const query = (q||'').trim().toLowerCase();
     const all = this.allApps();
-    let html='';
+    const quick = [
+      {app:'edge', icon:'qchrome', name:'Microsoft Edge'},
+      {app:'settings', icon:'qgear', name:'Параметры'},
+      {app:'store', icon:'qplay', name:'Microsoft Store'},
+      {app:'photos', icon:'qgallery', name:'Фотографии'},
+      {app:'clockapp', icon:'qassist', name:'Часы'},
+    ];
+    let right='';
     if(!query){
-      html = `<div class="sp-group">Лучшее соответствие</div>` +
-        all.slice(0,4).map(a=>`<button class="sp-item" data-app="${a}">${I[APPS[a].icon]}<span><div>${esc(APPS[a].name)}</div><div class="spi-sub">Приложение</div></span></button>`).join('');
+      right = `<div class="sp-tips">
+        <div class="spt-ico">${I['taskview']}</div>
+        <div class="spt-title">Советы</div>
+        <div class="spt-sub">Быстрый поиск</div>
+        <hr>
+        <button class="sp-tip" data-q="Переводчик">${I.globe}<span>Перевести</span></button>
+        <button class="sp-tip" data-q="История Windows">${I.time}<span>Сегодня в истории</span></button>
+      </div>`;
     } else {
       const found = all.filter(a=>APPS[a].name.toLowerCase().includes(query));
-      if(found.length) html += `<div class="sp-group">Приложения</div>` + found.map(a=>`<button class="sp-item" data-app="${a}">${I[APPS[a].icon]}<span><div>${esc(APPS[a].name)}</div><div class="spi-sub">Приложение</div></span></button>`).join('');
-      html += `<div class="sp-group">Поиск в Интернете</div>
-        <button class="sp-item" data-web="1">${I['search']}<span><div>${esc(q)}</div><div class="spi-sub">Поиск в Интернете через Edge</div></span></button>`;
-      if(!found.length) html = `<div class="sp-group">Приложения</div><div class="sp-hint">Приложения не найдены</div>` + html.slice(html.indexOf('<div class="sp-group">Поиск'));
+      right = (found.length
+        ? `<div class="sp-group">Приложения</div>` + found.slice(0,7).map(a=>`<button class="sp-item" data-app="${a}">${I[APPS[a].icon]}<span><div>${esc(APPS[a].name)}</div><div class="spi-sub">Приложение</div></span></button>`).join('')
+        : `<div class="sp-group">Приложения</div><div class="sp-hint">Ничего не найдено</div>`)
+        + `<div class="sp-group">Поиск в Интернете</div>
+        <button class="sp-item" data-web="1">${I['search']}<span><div>${esc(q)}</div><div class="spi-sub">Открыть в Edge</div></span></button>`;
     }
-    body.innerHTML = html;
+    body.innerHTML = `<div class="sp-cols">
+      <div class="sp-quick">
+        <div class="sp-group">Быстрый поиск</div>
+        ${quick.map(k=>`<button class="sp-item" data-app="${k.app}">${I[k.icon]}<span>${esc(k.name)}</span></button>`).join('')}
+      </div>
+      <div class="sp-right">${right}</div>
+    </div>`;
     body.querySelectorAll('.sp-item[data-app]').forEach(b=>{
       b.addEventListener('click', ()=>{ WM.open(b.dataset.app); UI.closeAllFlyouts(); });
     });
     const web = body.querySelector('[data-web]');
     if(web) web.addEventListener('click', ()=>{ WM.open('edge',{query:q}); UI.closeAllFlyouts(); });
+    body.querySelectorAll('.sp-tip').forEach(b=>{
+      b.addEventListener('click', ()=>{ WM.open('edge',{query:b.dataset.q}); UI.closeAllFlyouts(); });
+    });
   },
 
   /* ==== представление задач ==== */
@@ -935,10 +1000,23 @@ function hexA(hex, a){
   const n = parseInt(hex.slice(1),16);
   return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
 }
+/* ---------- Обои (встроенные + свои фото с телефона/файла) ---------- */
+const WallCache = {};
 function applyWallpaper(){
-  const wp = WALLPAPERS.find(w=>w.id===S.data.wallpaper) || WALLPAPERS[0];
-  $('#wallpaper').style.backgroundImage = `url(${wp.url})`;
-  $('#lock').style.backgroundImage = `url(${wp.url})`;
+  const d = S.data;
+  const set = u=>{ if(!u) return;
+    $('#wallpaper').style.backgroundImage = `url(${u})`;
+    $('#lock').style.backgroundImage = `url(${u})`;
+  };
+  if(d.wallpaperCustom && d.wallpaperCustom.path){
+    const p = d.wallpaperCustom.path;
+    if(WallCache[p]){ set(WallCache[p]); return; }
+    const r = Bridge.readB64(p);
+    if(r && r.ok){ WallCache[p] = `data:${r.mime};base64,${r.b64}`; set(WallCache[p]); return; }
+  }
+  if(d.wallpaperCustom && d.wallpaperCustom.data){ set(d.wallpaperCustom.data); return; }
+  const wp = WALLPAPERS.find(w=>w.id===d.wallpaper) || WALLPAPERS[0];
+  set(wp.url);
 }
 function applyTransparency(){
   document.documentElement.style.setProperty('--flyout', S.data.transparency ? 'rgba(44,44,44,.86)' : 'rgb(50,50,50)');
@@ -1021,6 +1099,8 @@ const Power = {
 
 /* ---------- Инициализация ---------- */
 function initSystem(){
+  if(window.__win11Init) return;
+  window.__win11Init = true;
   S.load();
   KB.init();
   applyTheme(); applyAccent(); applyWallpaper(); applyTransparency();
@@ -1039,13 +1119,14 @@ function initSystem(){
   $('.tray-vol').innerHTML = `<svg class="tray-svg" viewBox="0 0 24 24" fill="currentColor" style="width:17px;height:17px"><path d="M4 9.2h3.2L12 5v14l-4.8-4.2H4z"/><path d="M15.2 8.7a4.7 4.7 0 0 1 0 6.6M17.8 6.4a8.2 8.2 0 0 1 0 11.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
   $('.tray-bat').innerHTML = `<svg class="tray-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" style="width:19px;height:19px"><rect x="3" y="8" width="16.5" height="8.5" rx="2"/><rect x="4.8" y="9.8" width="10.5" height="4.9" rx="1" fill="currentColor" stroke="none"/><path d="M21 10.5v3.5" stroke-linecap="round" stroke-width="2"/></svg>`;
 
-  // погодный виджет
-  const wt = ['Облачно','Ясно','Дождь','Облачно','Снег'];
-  const wti = new Date().getDate() % wt.length;
-  $('#tb-weather .tbw-temp').textContent = ((new Date().getDate()%5)-2) + 2 + '°';
-  $('#tb-weather .tbw-desc').textContent = wt[wti];
-  $('#tb-weather .tbw-ico').innerHTML = `<svg viewBox="0 0 48 48" style="width:22px;height:22px"><circle cx="19" cy="17" r="7" fill="#FFC83D"/><path d="M14.5 33a6 6 0 0 1 .4-12 8 8 0 0 1 15.4-2 6.6 6.6 0 0 1 1.3 13c-.5.1-16.6.7-17.1 1z" fill="#fff" opacity=".92"/></svg>`;
-  $('#tb-weather').addEventListener('click', ()=>WM.open('weather'));
+  // погода в поиске → виджеты
+  $('#tb-weather').addEventListener('click', e=>{
+    e.stopPropagation();
+    UI.toggleFlyout('#widgets', ()=>UI.renderWidgets());
+  });
+  // колокольчик уведомлений
+  $('#tb-bell').innerHTML = I.bell;
+  $('#tb-bell').addEventListener('click', ()=>UI.toggleFlyout('#cal', ()=>UI.renderCal()));
 
   // обработчики панели задач
   $('#tb-start').addEventListener('click', ()=>UI.toggleFlyout('#start', ()=>{ $('#start').classList.remove('allmode'); UI.stPage=0; $('#st-inp').value=''; UI.renderStart(); }));
@@ -1054,7 +1135,8 @@ function initSystem(){
   $('#tb-status').addEventListener('click', ()=>UI.toggleFlyout('#qs', ()=>UI.renderQS()));
   $('#tb-chev').addEventListener('click', ()=>{
     UI.toggleFlyout('#trayfly', ()=>{
-      $('#trayfly').innerHTML = `<span class="tf-ico" title="OneDrive">${I.onedrive}</span><span class="tf-ico" title="Безопасность Windows">${I.shield}</span>`;
+      $('#trayfly').innerHTML = `<span class="tf-ico" id="tf-tv" title="Представление задач">${I.taskview}</span><span class="tf-ico" title="OneDrive">${I.onedrive}</span><span class="tf-ico" title="Безопасность Windows">${I.shield}</span>`;
+      $('#tf-tv').addEventListener('click', ()=>{ UI.closeAllFlyouts(); UI.renderTaskView(); $('#taskview').classList.add('open'); });
     });
   });
   $('#tb-clock').addEventListener('click', ()=>UI.toggleFlyout('#cal', ()=>UI.renderCal()));
