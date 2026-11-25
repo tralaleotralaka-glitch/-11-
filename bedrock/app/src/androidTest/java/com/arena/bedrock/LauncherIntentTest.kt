@@ -32,6 +32,9 @@ class LauncherIntentTest {
 
     @Before fun reset() {
         context.getSharedPreferences("bedrock", Context.MODE_PRIVATE).edit().clear().commit()
+        File(context.filesDir, "versions").deleteRecursively()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("am force-stop com.mojang.minecraftpe")).use { it.readBytes() }
     }
 
     private fun capture(action: () -> Unit): Intent {
@@ -101,4 +104,90 @@ class LauncherIntentTest {
             assertTrue(result.getIntExtra("flags", 0) and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         }
     }
+    private fun waitForVersionTask(scenario: ActivityScenario<MainActivity>) {
+        val deadline = android.os.SystemClock.elapsedRealtime() + 30000
+        while (android.os.SystemClock.elapsedRealtime() < deadline) {
+            var busy = true
+            scenario.onActivity { activity ->
+                val field = MainActivity::class.java.getDeclaredField("versionBusy").apply { isAccessible = true }
+                busy = field.getBoolean(activity)
+            }
+            if (!busy) return
+            android.os.SystemClock.sleep(100)
+        }
+        fail("APK task did not finish")
+    }
+
+    private fun pickApk(scenario: ActivityScenario<MainActivity>, file: File) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.imports", file)
+        scenario.onActivity { activity ->
+            val method = MainActivity::class.java.getDeclaredMethod("onActivityResult", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, Intent::class.java)
+            method.isAccessible = true
+            method.invoke(activity, 102, Activity.RESULT_OK, Intent().setData(uri))
+        }
+        waitForVersionTask(scenario)
+    }
+
+    private fun fixture(): File {
+        val file = File(context.filesDir, "versions/source.apk").apply { parentFile!!.mkdirs() }
+        InstrumentationRegistry.getInstrumentation().context.assets.open("fixture-minecraft.apk").use { input -> file.outputStream().use { input.copyTo(it) } }
+        return file
+    }
+
+    @Test fun versionApkIsValidatedDeduplicatedAndRestored() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val source = fixture()
+            pickApk(scenario, source)
+            val repo = VersionRepository(context)
+            val entry = repo.list().single()
+            assertEquals("test-fixture-not-minecraft", entry.version)
+            assertEquals(1L, entry.code)
+            assertEquals(64, entry.sha256.length)
+            assertTrue(entry.signer.isNotEmpty())
+            pickApk(scenario, source)
+            assertEquals(1, repo.list().size)
+            onView(withContentDescription("tab_versions")).perform(click())
+            scenario.recreate()
+            assertEquals(entry.id, context.getSharedPreferences("bedrock", Context.MODE_PRIVATE).getString("selected_version", null))
+            repo.verify(entry) { false }
+            repo.apk(entry).appendText("tampered")
+            try { repo.verify(entry) { false }; fail("Modified APK accepted") } catch (_: IllegalArgumentException) { }
+        }
+    }
+
+    @Test fun invalidApkNeverAppearsInLibrary() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val file = File(context.filesDir, "versions/not-an-apk.apk").apply { parentFile!!.mkdirs(); writeText("not an APK") }
+            pickApk(scenario, file)
+            assertTrue(VersionRepository(context).list().isEmpty())
+            assertTrue(File(context.filesDir, "versions").listFiles().orEmpty().none { it.name.endsWith(".pending.apk") })
+        }
+    }
+
+    @Test fun installationRequiresConfirmationAndUsesSystemInstallerIntent() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("appops set com.arena.bedrock REQUEST_INSTALL_PACKAGES allow")).use { it.readBytes() }
+        androidx.test.espresso.intent.Intents.init()
+        try {
+            @Suppress("DEPRECATION")
+            val installAction = Intent.ACTION_INSTALL_PACKAGE
+            androidx.test.espresso.intent.Intents.intending(androidx.test.espresso.intent.matcher.IntentMatchers.hasAction(installAction))
+                .respondWith(android.app.Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                pickApk(scenario, fixture())
+                val entry = VersionRepository(context).list().single()
+                onView(withContentDescription("tab_versions")).perform(click())
+                onView(withContentDescription("install_version_${entry.id}")).perform(scrollTo(), click())
+                assertTrue(androidx.test.espresso.intent.Intents.getIntents().none { it.action == installAction })
+                onView(withText("Продолжить")).perform(click())
+                waitForVersionTask(scenario)
+                instrumentation.waitForIdleSync()
+                val intent = androidx.test.espresso.intent.Intents.getIntents().single { it.action == installAction }
+                assertEquals("content", intent.data?.scheme)
+                assertEquals("com.arena.bedrock.imports", intent.data?.authority)
+                assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+            }
+        } finally { androidx.test.espresso.intent.Intents.release() }
+    }
+
 }

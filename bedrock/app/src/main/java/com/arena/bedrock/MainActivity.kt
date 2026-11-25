@@ -35,6 +35,9 @@ class MainActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     @Volatile private var alive = true
     @Volatile private var importing = false
+    private val versionRepo by lazy { VersionRepository(this) }
+    @Volatile private var versionBusy = false
+    @Volatile private var versionCancelled = false
     private var tab = "home"
     private var message = ""
     private var servers = mutableListOf<BedrockServer>()
@@ -70,6 +73,7 @@ class MainActivity : Activity() {
         tab = state?.getString("tab") ?: "home"
         message = state?.getString("message") ?: ""
         loadServers()
+        worker.execute { versionRepo.root.listFiles()?.filter { it.name.endsWith(".pending.apk") }?.forEach { it.delete() } }
         render()
     }
     override fun onResume() {
@@ -94,7 +98,7 @@ class MainActivity : Activity() {
         label(root, "B / BEDROCK LAUNCHER", 13f, mint).typeface = Typeface.DEFAULT_BOLD
         val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         root.addView(nav)
-        listOf("home" to "Играть", "servers" to "Серверы", "imports" to "Импорт").forEach { (id, name) ->
+        listOf("home" to "Играть", "versions" to "Версии", "servers" to "Серверы", "imports" to "Импорт").forEach { (id, name) ->
             val b = Button(this).apply {
                 text = name; isAllCaps = false; textSize = 13f; contentDescription = "tab_$id"
                 setTextColor(if (id == tab) mint else muted)
@@ -108,6 +112,7 @@ class MainActivity : Activity() {
         page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(page)
         when (tab) {
+            "versions" -> versionsPage()
             "servers" -> serverPage()
             "imports" -> importPage()
             else -> homePage()
@@ -128,7 +133,9 @@ class MainActivity : Activity() {
         val version = installed()
         label(game, if (version != null) "● Minecraft найден" else "○ Minecraft не установлен", 18f)
         label(game, if (version != null) "Версия $version" else "Установи официальную игру, затем вернись сюда.", 14f, muted)
-        button(game, "Играть в Bedrock", "play", true) { launchGame() }
+        button(game, "Играть в Bedrock", "play", true) { playSelected() }
+        selectedVersion()?.let { label(game, "Выбрано в библиотеке: ${it.version}", 13f, mint) }
+        button(game, "Выбрать / скачать версию", "choose_version") { tab = "versions"; render() }
         if (version == null) button(game, "Открыть Google Play", "open_store") { openStore() }
         val info = card()
         label(info, "Один центр для твоей игры", 18f)
@@ -244,7 +251,7 @@ class MainActivity : Activity() {
         label(box, "Импортируй только доверенные файлы. Совместимость с версией игры и успешный импорт определяет сам Minecraft.", 13f, muted)
     }
     private fun chooseImport() {
-        if (importing) return
+        if (importing || versionBusy) { setStatus("Дождись текущей операции или отмени загрузку"); return }
         if (installed() == null) { missingGame(); return }
         try {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -256,6 +263,14 @@ class MainActivity : Activity() {
     @Deprecated("Platform activity result API used to avoid an unnecessary UI dependency")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 201) {
+            setStatus(if (resultCode == RESULT_OK) "Установщик завершил работу. Проверь установленную версию на главной." else "Установка отменена или отклонена Android. Исходный Minecraft не удалялся.")
+            render(); return
+        }
+        if (requestCode == 102) {
+            if (resultCode == RESULT_OK) data?.data?.let { addVersionFile(it) }
+            return
+        }
         if (requestCode != 101 || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         if (importing) return
@@ -327,9 +342,199 @@ class MainActivity : Activity() {
             dispatch(intent, "Файл передан Minecraft. Дождись сообщения об импорте в игре.")
         } catch (e: Exception) { setStatus("Не удалось передать файл Minecraft: ${e.javaClass.simpleName}") }
     }
+    private fun selectedVersion(): VersionRepository.Entry? = versionRepo.list().firstOrNull {
+        it.id == prefs.getString("selected_version", null)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun installedCode(): Long? = runCatching {
+        val info = packageManager.getPackageInfo(MINECRAFT_PACKAGE, 0)
+        if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+    }.getOrNull()
+
+    private fun playSelected() {
+        val selected = selectedVersion()
+        if (selected != null && installedCode() != selected.code) {
+            AlertDialog.Builder(this).setTitle("Сначала установи выбранную версию")
+                .setMessage("Выбрана ${selected.version}. Сейчас установлена ${installed() ?: "никакая"}. Из APK в библиотеке нельзя играть без установки Android.")
+                .setPositiveButton("Установить") { _, _ -> confirmInstall(selected) }
+                .setNegativeButton("Отмена", null).show()
+        } else launchGame()
+    }
+
+    private fun versionsPage() {
+        label(page, "Версии Bedrock", 28f).typeface = Typeface.DEFAULT_BOLD
+        label(page, "Установлена: ${installed() ?: "нет"}", 14f, mint)
+        if (versionBusy) {
+            label(page, "Идёт подготовка APK. Можно отменить; незавершённый файл будет удалён.", 14f, muted)
+            button(page, "Отменить операцию", "cancel_download") {
+                versionCancelled = true
+                setStatus("Отмена запрошена; ожидание сети — до 15 секунд")
+            }
+        }
+        button(page, "Скачать APK по ссылке", "download_apk", true) { downloadDialog() }.isEnabled = !versionBusy && !importing
+        button(page, "Добавить APK с телефона", "add_apk") {
+            if (versionBusy || importing) return@button
+            try {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    type = "*/*"; addCategory(Intent.CATEGORY_OPENABLE)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, 102)
+            } catch (_: Exception) { setStatus("Не удалось открыть выбор файла") }
+        }.isEnabled = !versionBusy && !importing
+        label(page, "Только собственные APK из доверенных источников. Публичного официального каталога старых Bedrock APK нет; ссылки лаунчер не предоставляет.", 13f, muted)
+        label(page, "Один Minecraft за раз. Для смены версии нужна установка Android. Старую поверх новой система может не установить. Сохрани резервную копию миров; лаунчер ничего не удаляет автоматически.", 13f, muted)
+        val entries = versionRepo.list()
+        val selected = selectedVersion()
+        if (entries.isEmpty()) label(page, "Библиотека пуста. Добавь полноценный .apk — XAPK/APKS и split APK не поддерживаются.", 15f, muted)
+        entries.forEach { entry ->
+            val box = card()
+            label(box, "${if (selected?.id == entry.id) "✓ " else ""}${entry.version}", 21f)
+            label(box, "versionCode ${entry.code} · ${entry.bytes / 1048576} МБ", 13f, muted)
+            if (installedCode() == entry.code) label(box, "Эта версия установлена", 13f, mint)
+            button(box, if (selected?.id == entry.id) "Выбрана" else "Выбрать", "select_version_${entry.id}") {
+                prefs.edit().putString("selected_version", entry.id).apply()
+                setStatus("Выбрана ${entry.version}. Чтобы играть, установи её через Android."); render()
+            }.isEnabled = !versionBusy
+            button(box, "Установить через Android", "install_version_${entry.id}", true) { confirmInstall(entry) }.isEnabled = !versionBusy && !importing
+            button(box, "SHA-256 и подпись", "version_info_${entry.id}") {
+                AlertDialog.Builder(this).setTitle("Проверка файла")
+                    .setMessage("SHA-256 APK:\n${entry.sha256}\n\nSHA-256 сертификата:\n${entry.signer}\n\nИмя пакета: $MINECRAFT_PACKAGE. Это не подтверждение издателя, если на телефоне ещё нет доверенной копии Minecraft.")
+                    .setPositiveButton("Закрыть", null).show()
+            }
+            button(box, "Удалить APK из библиотеки", "delete_version_${entry.id}") {
+                AlertDialog.Builder(this).setTitle("Удалить сохранённый APK?")
+                    .setMessage("Установленная игра и её миры останутся на месте.")
+                    .setPositiveButton("Удалить") { _, _ ->
+                        runCatching { versionRepo.delete(entry) }.onFailure { setStatus(it.message ?: "Ошибка удаления") }
+                        if (selected?.id == entry.id) prefs.edit().remove("selected_version").apply()
+                        render()
+                    }.setNegativeButton("Отмена", null).show()
+            }.isEnabled = !versionBusy
+        }
+    }
+
+    private fun downloadDialog() {
+        val form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(8), dp(22), dp(4)) }
+        label(form, "Прямая HTTPS-ссылка на твой законно полученный APK. Скачивание не выдаёт лицензию. Проверь источник.", 13f, muted)
+        val link = EditText(this).apply {
+            hint = "https://…/minecraft.apk"; contentDescription = "apk_url"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true); form.addView(this)
+        }
+        val hash = EditText(this).apply {
+            hint = "SHA-256 (если известен)"; contentDescription = "apk_hash"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true); form.addView(this)
+        }
+        val error = label(form, "", 13f, Color.rgb(255, 155, 139))
+        val dialog = AlertDialog.Builder(this).setTitle("Скачать версию")
+            .setView(form).setPositiveButton("Скачать", null).setNegativeButton("Отмена", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+                contentDescription = "start_apk_download"
+                setOnClickListener {
+                    try {
+                        val url = ApkTransfers.url(link.text.toString()).toString()
+                        val expected = ApkTransfers.expectedHash(hash.text.toString())
+                        dialog.dismiss()
+                        versionTask { part ->
+                            val actual = part.outputStream().use { output ->
+                                ApkTransfers.download(url, output, { versionCancelled || !alive }, { versionRepo.root.usableSpace }, ::downloadProgress)
+                            }
+                            require(expected == null || expected == actual) { "SHA-256 не совпал с указанным. Файл удалён" }
+                            storeVersion(part, actual)
+                        }
+                    } catch (e: IllegalArgumentException) { error.text = e.message }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun downloadProgress(bytes: Long, total: Long?) {
+        val text = "APK: ${bytes / 1048576} МБ" + (total?.let { " / ${it / 1048576} МБ" } ?: "")
+        runOnUiThread { if (alive && !versionCancelled) setStatus(text) }
+    }
+
+    private fun versionTask(task: (File) -> Unit) {
+        if (versionBusy || importing) { setStatus("Дождись текущей операции"); return }
+        versionBusy = true; versionCancelled = false
+        setStatus("Подготовка APK…")
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        render()
+        worker.execute {
+            val part = File(versionRepo.root, "${UUID.randomUUID()}.pending.apk")
+            try { task(part) }
+            catch (e: Exception) {
+                runOnUiThread {
+                    if (alive) setStatus(if (versionCancelled) "Операция отменена. Незавершённый APK удалён." else "Ошибка APK: ${e.message ?: e.javaClass.simpleName}")
+                }
+            } finally {
+                part.delete()
+                runOnUiThread {
+                    if (alive && !isFinishing) {
+                        versionBusy = false
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        render()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun addVersionFile(uri: Uri) {
+        versionTask { part ->
+            val input = contentResolver.openInputStream(uri) ?: error("Не удалось открыть выбранный APK")
+            val hash = input.use { source -> part.outputStream().use { output ->
+                ApkTransfers.copy(source, output, null, { versionCancelled || !alive }, { versionRepo.root.usableSpace }, ::downloadProgress)
+            } }
+            storeVersion(part, hash)
+        }
+    }
+
+    private fun storeVersion(part: File, hash: String) {
+        check(!versionCancelled && alive) { "Операция отменена" }
+        runOnUiThread { if (alive) setStatus("Проверка пакета, подписи и совместимости APK…") }
+        val entry = versionRepo.commit(part, hash) { versionCancelled || !alive }
+        prefs.edit().putString("selected_version", entry.id).apply()
+        runOnUiThread { if (alive) setStatus("${entry.version} добавлена и выбрана. Нажми «Установить через Android», затем «Играть».") }
+    }
+
+    private fun confirmInstall(entry: VersionRepository.Entry) {
+        AlertDialog.Builder(this).setTitle("Установить ${entry.version}?")
+            .setMessage("Android запросит подтверждение установки. Это заменит текущую версию Minecraft, если система разрешит. Понижение версии или другая подпись могут быть отклонены. Сначала сохрани миры!\n\nНе устанавливай неизвестные APK. При отсутствии Minecraft на телефоне издатель файла лаунчером не подтверждён. Игра не будет удалена автоматически.")
+            .setPositiveButton("Продолжить") { _, _ ->
+                if (android.os.Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                    try {
+                        startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                        setStatus("Разреши установку для Bedrock Launcher, вернись и снова нажми «Установить».")
+                    } catch (_: Exception) { setStatus("Разреши установку из этого источника в настройках Android") }
+                } else {
+                    versionTask {
+                        versionRepo.verify(entry) { versionCancelled || !alive }
+                        check(!versionCancelled && alive) { "Операция отменена" }
+                        runOnUiThread {
+                            if (alive && !versionCancelled) {
+                                try {
+                                    val uri = FileProvider.getUriForFile(this, "$packageName.imports", versionRepo.apk(entry))
+                                    @Suppress("DEPRECATION")
+                                    val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).setData(uri)
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        .putExtra(Intent.EXTRA_RETURN_RESULT, true).apply { clipData = ClipData.newRawUri("Minecraft APK", uri) }
+                                    startActivityForResult(intent, 201)
+                                    setStatus("APK передан установщику Android. Подтверди установку; затем вернись и нажми «Играть».")
+                                } catch (e: Exception) { setStatus("Не удалось открыть установщик: ${e.javaClass.simpleName}") }
+                            }
+                        }
+                    }
+                }
+            }.setNegativeButton("Отмена", null).show()
+    }
+
     private fun about() {
-        val report = "Bedrock Launcher 1.0\nAndroid ${android.os.Build.VERSION.RELEASE}\nABI: ${android.os.Build.SUPPORTED_ABIS.joinToString()}\nMinecraft: ${installed() ?: "не установлен"}\nСтатус: $message"
-        AlertDialog.Builder(this).setTitle("Bedrock Launcher · 1.0")
+        val report = "Bedrock Launcher 1.1\nAndroid ${android.os.Build.VERSION.RELEASE}\nABI: ${android.os.Build.SUPPORTED_ABIS.joinToString()}\nMinecraft: ${installed() ?: "не установлен"}\nСтатус: $message"
+        AlertDialog.Builder(this).setTitle("Bedrock Launcher · 1.1")
             .setMessage("Новый нативный Android-проект. Без Java/Pojav и Windows-оболочки.\n\nЛаунчер открывает установленный Minecraft Bedrock и не содержит его код, лицензию или аккаунты. Не связан с Mojang или Microsoft.\n\n$report")
             .setPositiveButton("Скопировать диагностику") { _, _ ->
                 (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Bedrock diagnostics", report))
@@ -337,7 +542,7 @@ class MainActivity : Activity() {
             }.setNegativeButton("Закрыть", null).show()
     }
     override fun onDestroy() {
-        alive = false; worker.shutdownNow()
+        alive = false; versionCancelled = true; worker.shutdownNow()
         super.onDestroy()
     }
 }

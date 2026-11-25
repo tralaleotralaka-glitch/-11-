@@ -24,3 +24,6 @@ android/app/src/main/assets/
 bedrock/.gradle/
 bedrock/**/build/
 bedrock/local.properties
+
+# Generated CI-only APK fixtures (never bundled in the main app)
+bedrock/app/src/androidTest/assets/*.apk

@@ -31,16 +31,19 @@ jobs:
         run: |
           mkdir -p ../dist
           set -o pipefail
-          gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :testgame:assembleDebug --no-daemon --stacktrace 2>&1 | tee ../dist/bedrock-build.log
+          gradle :testgame:assembleDebug --no-daemon --stacktrace 2>&1 | tee ../dist/bedrock-build.log
+          mkdir -p app/src/androidTest/assets
+          cp testgame/build/outputs/apk/debug/testgame-debug.apk app/src/androidTest/assets/fixture-minecraft.apk
+          gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace 2>&1 | tee -a ../dist/bedrock-build.log
       - name: Inspect distributable APK
         run: |
-          cp bedrock/app/build/outputs/apk/debug/app-debug.apk dist/BedrockLauncher-1.0.apk
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging dist/BedrockLauncher-1.0.apk | tee dist/bedrock-package.txt
+          cp bedrock/app/build/outputs/apk/debug/app-debug.apk dist/BedrockLauncher-1.1.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging dist/BedrockLauncher-1.1.apk | tee dist/bedrock-package.txt
           grep "package: name='com.arena.bedrock'" dist/bedrock-package.txt
           python3 - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile
-          path = Path('dist/BedrockLauncher-1.0.apk')
+          path = Path('dist/BedrockLauncher-1.1.apk')
           assert path.stat().st_size < 10_000_000, 'Unexpected bundled game/engine'
           with ZipFile(path) as apk:
               names = apk.namelist()
@@ -64,7 +67,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            python3 scripts/smoke_bedrock.py dist/BedrockLauncher-1.0.apk
+            python3 scripts/smoke_bedrock.py dist/BedrockLauncher-1.1.apk
             adb install -r bedrock/testgame/build/outputs/apk/debug/testgame-debug.apk
             cd bedrock && gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace
       - name: Failure diagnostics
@@ -84,15 +87,15 @@ jobs:
           PY
       - name: Package tested APK and source
         run: |
-          sha256sum dist/BedrockLauncher-1.0.apk > dist/BedrockLauncher-1.0.apk.sha256
-          git archive --format=zip --output=dist/BedrockLauncher-1.0-sources.zip HEAD bedrock android/debug.keystore .github/workflows/bedrock-apk.yml scripts/smoke_bedrock.py
+          sha256sum dist/BedrockLauncher-1.1.apk > dist/BedrockLauncher-1.1.apk.sha256
+          git archive --format=zip --output=dist/BedrockLauncher-1.1-sources.zip HEAD bedrock android/debug.keystore .github/workflows/bedrock-apk.yml scripts/smoke_bedrock.py
       - name: Upload APK and test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: BedrockLauncher-1.0
+          name: BedrockLauncher-1.1
           path: |
-            dist/BedrockLauncher-1.0*
+            dist/BedrockLauncher-1.1*
             dist/bedrock-*
             bedrock/app/build/reports/tests/
             bedrock/app/build/reports/androidTests/
@@ -101,9 +104,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view bedrock-launcher-1.0 >/dev/null 2>&1; then
-            gh release edit bedrock-launcher-1.0 --prerelease --notes-file bedrock/RELEASE.md
+          if gh release view bedrock-launcher-1.1 >/dev/null 2>&1; then
+            gh release edit bedrock-launcher-1.1 --prerelease --notes-file bedrock/RELEASE.md
           else
-            gh release create bedrock-launcher-1.0 --target "$GITHUB_SHA" --prerelease --title "Bedrock Launcher 1.0 — Android" --notes-file bedrock/RELEASE.md
+            gh release create bedrock-launcher-1.1 --target "$GITHUB_SHA" --prerelease --title "Bedrock Launcher 1.1 — Android" --notes-file bedrock/RELEASE.md
           fi
-          gh release upload bedrock-launcher-1.0 dist/BedrockLauncher-1.0.apk dist/BedrockLauncher-1.0.apk.sha256 dist/BedrockLauncher-1.0-sources.zip --clobber
+          gh release upload bedrock-launcher-1.1 dist/BedrockLauncher-1.1.apk dist/BedrockLauncher-1.1.apk.sha256 dist/BedrockLauncher-1.1-sources.zip --clobber
