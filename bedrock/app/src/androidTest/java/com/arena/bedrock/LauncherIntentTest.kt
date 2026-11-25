@@ -175,6 +175,24 @@ class LauncherIntentTest {
         }
     }
 
+    @Test fun unsignedApkWithMinecraftPackageIsRejected() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            val source = fixture()
+            val unsigned = File(context.filesDir, "versions/unsigned.apk")
+            java.util.zip.ZipFile(source).use { original ->
+                ZipOutputStream(unsigned.outputStream()).use { output ->
+                    original.entries().asSequence().filter { !it.isDirectory && !it.name.startsWith("META-INF/") }.forEach { entry ->
+                        output.putNextEntry(ZipEntry(entry.name))
+                        original.getInputStream(entry).use { it.copyTo(output) }
+                        output.closeEntry()
+                    }
+                }
+            }
+            pickApk(scenario, unsigned)
+            assertTrue("Unsigned APK must never be accepted", VersionRepository(context).list().isEmpty())
+        }
+    }
+
     @Test fun installationRequiresConfirmationAndUsesSystemInstallerIntent() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("appops set com.arena.bedrock REQUEST_INSTALL_PACKAGES allow")).use { it.readBytes() }

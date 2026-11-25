@@ -29,7 +29,13 @@ class VersionRepository(private val context: Context) {
     }.sortedByDescending { it.addedAt }
 
     @Suppress("DEPRECATION")
-    private fun flags() = PackageManager.GET_META_DATA or if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+    private fun flags(): Int {
+        // Android 9/10's getPackageArchiveInfo only calls collectCertificates when
+        // GET_SIGNATURES is set, even when GET_SIGNING_CERTIFICATES was requested.
+        // Request both: keep modern signing history without accepting unsigned APKs.
+        return PackageManager.GET_META_DATA or PackageManager.GET_SIGNATURES or
+            (if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else 0)
+    }
 
     @Suppress("DEPRECATION")
     private fun signatures(info: PackageInfo, history: Boolean = false): Set<String> {
