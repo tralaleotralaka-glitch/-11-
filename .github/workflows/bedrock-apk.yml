@@ -1,0 +1,109 @@
+name: Build native Bedrock launcher
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    paths: ['bedrock/**', '.github/workflows/bedrock-apk.yml', 'scripts/smoke_bedrock.py']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bedrock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compile and unit test independent native app
+        working-directory: bedrock
+        run: |
+          mkdir -p ../dist
+          set -o pipefail
+          gradle :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :testgame:assembleDebug --no-daemon --stacktrace 2>&1 | tee ../dist/bedrock-build.log
+      - name: Inspect distributable APK
+        run: |
+          cp bedrock/app/build/outputs/apk/debug/app-debug.apk dist/BedrockLauncher-1.0.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging dist/BedrockLauncher-1.0.apk | tee dist/bedrock-package.txt
+          grep "package: name='com.arena.bedrock'" dist/bedrock-package.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          path = Path('dist/BedrockLauncher-1.0.apk')
+          assert path.stat().st_size < 10_000_000, 'Unexpected bundled game/engine'
+          with ZipFile(path) as apk:
+              names = apk.namelist()
+              dex = b''.join(apk.read(n) for n in names if n.endswith('.dex'))
+              assert b'Lcom/arena/bedrock/MainActivity;' in dex
+              for forbidden in (b'Lnet/kdt/pojavlaunch/', b'Lcom/arena/bedrock/testgame/ReceiverActivity;'):
+                  assert forbidden not in dex, 'Game engine or CI stub leaked into launcher'
+              assert not any(n.startswith('lib/') or n.startswith('assets/components/') for n in names)
+          PY
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android UI and cross-app intent contract tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            python3 scripts/smoke_bedrock.py dist/BedrockLauncher-1.0.apk
+            adb install -r bedrock/testgame/build/outputs/apk/debug/testgame-debug.apk
+            cd bedrock && gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace
+      - name: Failure diagnostics
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          paths = [Path('dist/bedrock-build.log')]
+          paths += list(Path('bedrock/app/build').glob('**/TEST-*.xml'))
+          for path in paths:
+              text = path.read_text(errors='replace')
+              if path.suffix == '.xml' and '<failure' not in text and '<error' not in text:
+                  continue
+              start = text.find('* What went wrong:')
+              text = text[start:start+20000] if start >= 0 else text[-20000:]
+              print('::error title=' + path.name + '::' + text.replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D'))
+          PY
+      - name: Package tested APK and source
+        run: |
+          sha256sum dist/BedrockLauncher-1.0.apk > dist/BedrockLauncher-1.0.apk.sha256
+          git archive --format=zip --output=dist/BedrockLauncher-1.0-sources.zip HEAD bedrock android/debug.keystore .github/workflows/bedrock-apk.yml scripts/smoke_bedrock.py
+      - name: Upload APK and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BedrockLauncher-1.0
+          path: |
+            dist/BedrockLauncher-1.0*
+            dist/bedrock-*
+            bedrock/app/build/reports/tests/
+            bedrock/app/build/reports/androidTests/
+            bedrock/app/build/outputs/androidTest-results/
+      - name: Publish Bedrock launcher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view bedrock-launcher-1.0 >/dev/null 2>&1; then
+            gh release edit bedrock-launcher-1.0 --prerelease --notes-file bedrock/RELEASE.md
+          else
+            gh release create bedrock-launcher-1.0 --target "$GITHUB_SHA" --prerelease --title "Bedrock Launcher 1.0 — Android" --notes-file bedrock/RELEASE.md
+          fi
+          gh release upload bedrock-launcher-1.0 dist/BedrockLauncher-1.0.apk dist/BedrockLauncher-1.0.apk.sha256 dist/BedrockLauncher-1.0-sources.zip --clobber

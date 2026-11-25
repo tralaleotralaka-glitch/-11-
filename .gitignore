@@ -19,3 +19,8 @@ Windows11.apk
 android/app/src/main/assets/
 
 .engine-build/
+
+# Independent Bedrock Android project
+bedrock/.gradle/
+bedrock/**/build/
+bedrock/local.properties

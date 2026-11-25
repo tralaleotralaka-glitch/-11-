@@ -1,0 +1,17 @@
+// TEST-ONLY intent receiver. Never packaged in or published with the launcher.
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.arena.bedrock.testgame'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'com.mojang.minecraftpe'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName 'test-fixture-not-minecraft'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

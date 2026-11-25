@@ -1,3 +1,27 @@
+# Bedrock Launcher 1.0 — новый проект для Android
+
+Текущая разработка: **`bedrock/`**, отдельное нативное приложение на Kotlin с нуля.
+Не использует Java/Pojav, WebView или старую Windows-оболочку.
+
+- Запуск установленного Minecraft Bedrock.
+- Свой список серверов и передача адреса в игру.
+- Импорт `.mcpack`, `.mcaddon`, `.mcworld` через системный выбор файла.
+- Android 7.0+, package ID `com.arena.bedrock` (отдельно от старого JavaLauncher).
+- GitHub Actions: **Build native Bedrock launcher**, `.github/workflows/bedrock-apk.yml`.
+- Релиз: `bedrock-launcher-1.0`, файл **BedrockLauncher-1.0.apk**.
+
+**Как согласовано: игра открывается отдельным установленным приложением Minecraft.
+Игровой движок Bedrock не встроен, файлы игры и лицензия не включены в APK.**
+
+Инструкции, тесты и ограничения: [`bedrock/README.md`](bedrock/README.md).
+Новый проект не меняет предыдущие Java-релизы. Контрактные Android-тесты используют
+CI-only приёмник Intent вместо Minecraft; он не входит в готовый APK. Проверки
+реального Bedrock на телефоне ещё не выполнены.
+
+---
+
+## Предыдущая Java-разработка (история, не Bedrock)
+
 # Java Launcher 0.5 — единое приложение
 
 Версия 0.5 убирает дополнительный стартовый экран 0.4. Нажатие на иконку сразу
