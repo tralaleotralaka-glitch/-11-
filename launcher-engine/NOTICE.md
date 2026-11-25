@@ -1,4 +1,4 @@
-# Java Launcher 0.4 — third-party engine and reproducible modifications
+# Java Launcher 0.5 — third-party engine and reproducible modifications
 
 This is a **derivative PojavLauncher build**, not an independently authored JVM or renderer.
 The original project authors and their notices are retained. Not affiliated with Mojang,
@@ -6,12 +6,13 @@ Microsoft, or the PojavLauncher maintainers. No Minecraft client/assets are bund
 
 ## Project modifications
 
-`HomeActivity.java`, the preparation/check/smoke scripts, icon and build overlay were
-added by this project. These engine-overlay modifications are provided under LGPL-3.0-or-later.
+The preparation/check/smoke scripts, icon and build overlay were added by this project.
+The extra HomeActivity from 0.4 was removed in 0.5: launching the app icon immediately
+enters the integrated engine menu, without a hand-off screen or external launcher. These engine-overlay modifications are provided under LGPL-3.0-or-later.
 This notice does not relicense unrelated pre-existing project files.
 
 The namespace `net.kdt.pojavlaunch` is intentionally retained for JNI compatibility.
-Application ID is `com.arena.win11`; versionCode 10; the existing public development
+Application ID is `com.arena.win11`; versionCode 11; the existing public development
 signing key is used so an APK can update the previous project prototype.
 Development signing is **not** a production signing/security arrangement.
 
@@ -49,8 +50,9 @@ Run the checked-in `Build Java launcher with game engine` Actions workflow. It c
 out the exact source above into a separate directory, obtains runtime bundles, applies
 `scripts/prepare_engine.py`, and uses JDK 8 + 17, Gradle 8.11 and Android NDK 25.2.
 The overlay preserves all game activities/services, native loading and upstream account
-handling. The own home opens TestStorageActivity, which prepares engine assets and
-opens the engine's version/account/game UI.
+handling. TestStorageActivity is the only launcher entry. It prepares engine assets and
+opens the version/account/game UI. All game activities and services belong to the same
+application ID, com.arena.win11; :game is its private game process, not a separate app.
 
 Users may modify and rebuild/relink this combined work; no anti-modification checks
 or proprietary service lock are added. APKs are installable via normal Android sideloading.
@@ -58,8 +60,9 @@ or proprietary service lock are added. APKs are installable via normal Android s
 ## Testing scope
 
 Python tests cover the overlay. ZIP validation checks all runtime packages, GL4ES and
-native bridges for ARM32/64 and x86/64. An x86_64 Android emulator smoke test opens the
-own home, enters the engine menu, and checks Java 8 extraction and crash logs.
+native bridges for ARM32/64 and x86/64. An x86_64 Android emulator smoke test starts the app through its registered launcher
+entry, checks the engine menu is in package com.arena.win11, verifies that no external
+PojavLauncher APK is installed, and checks Java 8 extraction and crash logs.
 **These are not Minecraft gameplay, GPU compatibility, Microsoft OAuth or physical
 ARM-device tests.** The first target to verify on a phone is Vanilla 1.12.2 / Java 8 / GL4ES.
 The old prototype downloads under files/minecraft are not moved or silently treated as

@@ -17,11 +17,12 @@ with ZipFile(sys.argv[1]) as apk:
             assert path in names, f"Missing {path}"
             assert apk.read(path)[:4] == b"\x7fELF", f"Not ELF: {path}"
     dex = b"".join(apk.read(name) for name in names if name.endswith(".dex"))
-    for cls in (b"Lcom/arena/javalauncher/HomeActivity;", b"Lnet/kdt/pojavlaunch/MainActivity;"):
+    for cls in (b"Lnet/kdt/pojavlaunch/TestStorageActivity;", b"Lnet/kdt/pojavlaunch/LauncherActivity;", b"Lnet/kdt/pojavlaunch/MainActivity;"):
         assert cls in dex, f"Missing class {cls}"
+    assert b"Lcom/arena/javalauncher/HomeActivity;" not in dex, "Obsolete hand-off screen still bundled"
     for component in ("lwjgl3", "security", "arc_dns_injector", "forge_installer"):
         assert f"assets/components/{component}/version" in names, f"Missing {component}"
     provenance = json.loads(apk.read("assets/project_provenance.json"))
-    assert provenance["version"] == "0.4-engine-preview"
+    assert provenance["version"] == "0.5-engine-preview"
     print(json.dumps(provenance, indent=2))
-    print("Verified: project home + game classes + Java bundles + native bridges + GL4ES, all 4 ABIs")
+    print("Verified: integrated launcher + game classes + Java bundles + native bridges + GL4ES, all 4 ABIs")

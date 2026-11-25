@@ -4,7 +4,6 @@ import re
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 PACKAGE = "com.arena.win11"
@@ -25,20 +24,14 @@ def window():
 try:
     print(adb("install", "-r", sys.argv[1]))
     adb("logcat", "-c")
-    print(adb("shell", "am", "start", "-W", "-n", f"{PACKAGE}/com.arena.javalauncher.HomeActivity"))
-    deadline = time.monotonic() + 90
-    clicked = False
-    while time.monotonic() < deadline:
-        xml = window()
-        if 'content-desc="open_engine"' in xml:
-            tree = ET.fromstring(xml)
-            node = next(n for n in tree.iter("node") if n.get("content-desc") == "open_engine")
-            x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
-            (OUT / "home-smoke.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
-            adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
-            clicked = True
-            break
-    assert clicked, "Own launcher home/button did not become visible"
+    installed = adb("shell", "pm", "list", "packages", "-3").splitlines()
+    assert "package:net.kdt.pojavlaunch" not in installed
+    assert "package:net.kdt.pojavlaunch.debug" not in installed
+    component = adb("shell", "cmd", "package", "resolve-activity", "--brief",
+                    "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", PACKAGE).strip().splitlines()[-1]
+    assert component.startswith(PACKAGE + "/"), component
+    assert "TestStorageActivity" in component, component
+    print(adb("shell", "am", "start", "-W", "-n", component))
     deadline = time.monotonic() + 180
     ready = False
     while time.monotonic() < deadline:
@@ -47,6 +40,8 @@ try:
         assert not any(name in activity for name in ("mResumedActivity: ActivityRecord{ERROR",)), activity
         resumed = "\n".join(line for line in activity.splitlines() if "mResumedActivity" in line)
         assert "FatalErrorActivity" not in resumed and "ShowErrorActivity" not in resumed, resumed
+        if "net.kdt.pojavlaunch.LauncherActivity" in resumed:
+            assert PACKAGE + "/" in resumed, "Engine opened under another application package: " + resumed
         runtime = adb("shell", "run-as", PACKAGE, "cat", "runtimes/Internal/pojav_version", check=False).strip()
         if "net.kdt.pojavlaunch.LauncherActivity" in resumed and runtime and PACKAGE in xml:
             ready = True
@@ -56,7 +51,7 @@ try:
     (OUT / "engine-smoke-ui.xml").write_text(xml)
     log = adb("logcat", "-d", "-v", "threadtime")
     assert not re.search(r"FATAL EXCEPTION.*\n(?:.*\n){0,3}.*Process: com\.arena\.win11", log), "App crashed; inspect logcat"
-    message = "PASS: own home -> engine menu; Java 8 unpacked. Minecraft gameplay NOT tested."
+    message = "PASS: app icon -> integrated engine menu in com.arena.win11; no other launcher installed; Java 8 unpacked. Minecraft gameplay NOT tested."
     (OUT / "engine-smoke-result.txt").write_text(message + "\n" + resumed + "\nRuntime: " + runtime)
     print(message)
 except Exception as error:

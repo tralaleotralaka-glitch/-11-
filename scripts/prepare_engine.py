@@ -50,8 +50,8 @@ def prepare(engine, runtime_apk, project):
     for old, new in {
         'applicationId "net.kdt.pojavlaunch"': 'applicationId "com.arena.win11"',
         'minSdkVersion 21': 'minSdkVersion 24',
-        'versionCode getDateSeconds()': 'versionCode 10',
-        'versionName getVersionName()': 'versionName "0.4-engine-preview"',
+        'versionCode getDateSeconds()': 'versionCode 11',
+        'versionName getVersionName()': 'versionName "0.5-engine-preview"',
         "applicationIdSuffix '.debug'": '// No suffix: updates the existing project APK',
         "'net.kdt.pojavlaunch.debug'": "'com.arena.win11'",
         "'net.kdt.pojavlaunch.scoped.gamefolder.debug'": "'com.arena.win11.scoped.gamefolder'",
@@ -69,27 +69,24 @@ def prepare(engine, runtime_apk, project):
     tree = ET.parse(manifest)
     application = tree.getroot().find("application")
     assert application is not None
+    # Keep the engine's in-package storage/bootstrap entry as the ONLY launcher entry.
+    # It immediately opens LauncherActivity in this APK; no extra home or external app.
+    entries = []
     for activity in application.findall("activity"):
-        for intent in list(activity.findall("intent-filter")):
+        for intent in activity.findall("intent-filter"):
             if any(x.get(A + "name") == "android.intent.action.MAIN" for x in intent.findall("action")):
-                activity.remove(intent)
-                activity.set(A + "exported", "false")
-    home = ET.SubElement(application, "activity", {
-        A + "name": "com.arena.javalauncher.HomeActivity",
-        A + "exported": "true",
-        A + "label": "Java Launcher",
-    })
-    intent = ET.SubElement(home, "intent-filter")
-    ET.SubElement(intent, "action", {A + "name": "android.intent.action.MAIN"})
-    ET.SubElement(intent, "category", {A + "name": "android.intent.category.LAUNCHER"})
+                entries.append(activity)
+    if len(entries) != 1 or entries[0].get(A + "name") not in (
+        ".TestStorageActivity", "net.kdt.pojavlaunch.TestStorageActivity"
+    ):
+        raise ValueError("Pinned engine must have exactly one in-APK bootstrap entry")
+    entries[0].set(A + "label", "Java Launcher")
+    entries[0].set(A + "exported", "true")
     application.set(A + "icon", "@drawable/arena_launcher_icon")
     application.set(A + "roundIcon", "@drawable/arena_launcher_icon")
     # The old prototype stores downloads in files/minecraft. Keep them; do not claim
     # they're a runnable Pojav installation or silently move account files.
     tree.write(manifest, encoding="utf-8", xml_declaration=True)
-    home_dest = main / "java/com/arena/javalauncher/HomeActivity.java"
-    home_dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(project / "launcher-engine/HomeActivity.java", home_dest)
     for strings in (main / "res").glob("values*/strings.xml"):
         content = strings.read_text()
         content = re.sub(r'(<string name="app_name">).*?(</string>)', r'\g<1>Java Launcher · Pojav engine\2', content)
@@ -108,9 +105,9 @@ def prepare(engine, runtime_apk, project):
     for path in (project / "launcher-engine/licenses").glob("*"):
         shutil.copyfile(path, licenses / path.name)
     (main / "assets/project_provenance.json").write_text(json.dumps({
-        "version": "0.4-engine-preview", "engine": "PojavLauncherTeam/PojavLauncher",
+        "version": "0.5-engine-preview", "engine": "PojavLauncherTeam/PojavLauncher",
         "source_commit": PIN, "runtime_release": "gladiolus", "copied_runtime_files": copied,
-        "native_bridges": "built from pinned C sources", "home": "project-owned HomeActivity.java",
+        "native_bridges": "built from pinned C sources", "entry": "in-APK TestStorageActivity -> LauncherActivity -> MainActivity; no external launcher",
     }, indent=2))
     print(f"Prepared engine {PIN}; {len(copied)} runtime bundle files")
 

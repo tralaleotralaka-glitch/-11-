@@ -75,9 +75,9 @@ jobs:
           PY
       - name: Validate runtime and renderer contents
         run: |
-          cp .engine-build/app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk dist/JavaLauncher-0.4.apk
-          python3 scripts/check_engine_apk.py dist/JavaLauncher-0.4.apk
-          sha256sum dist/JavaLauncher-0.4.apk > dist/JavaLauncher-0.4.apk.sha256
+          cp .engine-build/app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk dist/JavaLauncher-0.5.apk
+          python3 scripts/check_engine_apk.py dist/JavaLauncher-0.5.apk
+          sha256sum dist/JavaLauncher-0.5.apk > dist/JavaLauncher-0.5.apk.sha256
       - name: Enable KVM for emulator smoke test
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -91,7 +91,7 @@ jobs:
           target: default
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: python3 scripts/smoke_engine.py dist/JavaLauncher-0.4.apk
+          script: python3 scripts/smoke_engine.py dist/JavaLauncher-0.5.apk
       - name: Package corresponding engine source and project modifications
         run: |
           mkdir -p dist/source/project
@@ -100,14 +100,14 @@ jobs:
           tar -xzf dist/engine-source.tar.gz --strip-components=1 -C dist/source/engine
           cp dist/runtime-origin.sha256 dist/source/
           cd dist/source
-          zip -qr ../JavaLauncher-0.4-sources.zip .
+          zip -qr ../JavaLauncher-0.5-sources.zip .
       - name: Upload APK, sources and test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: JavaLauncher-0.4-build
+          name: JavaLauncher-0.5-build
           path: |
-            dist/JavaLauncher-0.4*
+            dist/JavaLauncher-0.5*
             dist/*smoke*
             dist/runtime-origin.sha256
           if-no-files-found: warn
@@ -115,9 +115,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view java-launcher-0.4 >/dev/null 2>&1; then
-            gh release edit java-launcher-0.4 --prerelease --notes-file launcher-engine/RELEASE.md
+          if gh release view java-launcher-0.5 >/dev/null 2>&1; then
+            gh release edit java-launcher-0.5 --prerelease --notes-file launcher-engine/RELEASE.md
           else
-            gh release create java-launcher-0.4 --target "$GITHUB_SHA" --prerelease --title "Java Launcher 0.4 — Pojav engine integration" --notes-file launcher-engine/RELEASE.md
+            gh release create java-launcher-0.5 --target "$GITHUB_SHA" --prerelease --title "Java Launcher 0.5 — единый интерфейс, встроенный движок" --notes-file launcher-engine/RELEASE.md
           fi
-          gh release upload java-launcher-0.4 dist/JavaLauncher-0.4.apk dist/JavaLauncher-0.4.apk.sha256 dist/JavaLauncher-0.4-sources.zip --clobber
+          gh release upload java-launcher-0.5 dist/JavaLauncher-0.5.apk dist/JavaLauncher-0.5.apk.sha256 dist/JavaLauncher-0.5-sources.zip --clobber

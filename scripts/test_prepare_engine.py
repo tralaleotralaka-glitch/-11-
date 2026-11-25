@@ -43,25 +43,34 @@ resValue 'string', 'storageProviderAuthorities', 'net.kdt.pojavlaunch.scoped.gam
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_preserves_engine_and_adds_exactly_one_entry(self):
+    def test_keeps_single_in_app_launcher_and_game(self):
         prepare(self.engine, self.apk, PROJECT)
         manifest = ET.parse(self.main / 'AndroidManifest.xml')
         app = manifest.getroot().find('application')
         self.assertEqual('.PojavApplication', app.get(A + 'name'))
         entries = [x for x in app.findall('activity') if x.find('intent-filter') is not None]
         self.assertEqual(1, len(entries))
-        self.assertEqual('com.arena.javalauncher.HomeActivity', entries[0].get(A + 'name'))
+        self.assertEqual('.TestStorageActivity', entries[0].get(A + 'name'))
+        self.assertEqual('true', entries[0].get(A + 'exported'))
+        self.assertFalse(any('HomeActivity' in x.get(A + 'name', '') for x in app.findall('activity')))
+        self.assertFalse((self.main / 'java/com/arena/javalauncher/HomeActivity.java').exists())
         self.assertTrue(any(x.get(A + 'process') == ':game' for x in app.findall('activity')))
         gradle = (self.app / 'build.gradle').read_text()
         self.assertIn('applicationId "com.arena.win11"', gradle)
         self.assertIn("namespace 'net.kdt.pojavlaunch'", gradle)
-        self.assertIn('versionCode 10', gradle)
+        self.assertIn('versionCode 11', gradle)
         self.assertEqual((PROJECT / 'android/debug.keystore').read_bytes(), (self.app / 'debug.keystore').read_bytes())
         self.assertFalse((self.main / 'classes.dex').exists())
         self.assertFalse((self.main / 'lib').exists())
         self.assertEqual(PIN, json.loads((self.main / 'assets/project_provenance.json').read_text())['source_commit'])
         self.assertTrue((self.main / 'assets/project_licenses/LGPL-3.0.txt').is_file())
         self.assertIn('1.12.2', (self.main / 'assets/launcher_profiles.json').read_text())
+
+    def test_refuses_external_or_changed_launcher_entry(self):
+        manifest = self.main / 'AndroidManifest.xml'
+        manifest.write_text(manifest.read_text().replace('.TestStorageActivity', '.UnexpectedActivity'))
+        with self.assertRaisesRegex(ValueError, 'in-APK bootstrap'):
+            prepare(self.engine, self.apk, PROJECT)
 
     def test_refuses_missing_runtime(self):
         with ZipFile(self.apk, 'w') as apk:
