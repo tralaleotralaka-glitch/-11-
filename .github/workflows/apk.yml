@@ -44,39 +44,33 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Windows11.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/JavaLauncher-prototype.apk
           ls -la dist
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Windows11-APK
-          path: dist/Windows11.apk
+          name: JavaLauncher-prototype
+          path: dist/JavaLauncher-prototype.apk
           if-no-files-found: error
           retention-days: 90
 
-      - name: Publish release with APK
+      - name: Publish prototype (not a playable launcher yet)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > /tmp/notes.md <<'EOF'
-          Готовый APK: Windows 11 (веб-клон) в WebView-обёртке.
+          Собственный нативный Java Launcher — прототип 0.1, НЕ готовый игровой лаунчер.
 
-          ## Установка
-          1. Скачайте **Windows11.apk** ниже (раздел Assets)
-          2. Откройте файл на Android-телефоне
-          3. Разрешите установку из неизвестных источников, если спросит
-          4. Значок «Windows 11» появится в меню приложений
-
-          Требуется Android 7.0+ (API 24). Версия 11.5: кнопка Minecraft запускает официальную установленную игру для Android. Игра приобретается отдельно.
+          Работает: каталог релизов Mojang, выбор версии, загрузка описания и client.jar с проверкой SHA-1.
+          НЕ реализовано: вход Microsoft, Android JVM, графический слой, библиотеки/ресурсы и запуск игры.
+          Этот APK пока НЕ запускает Minecraft. Не содержит Minecraft и не открывает Bedrock.
+          Установка поверх Windows11.apk меняет главный экран приложения на прототип лаунчера.
+          Android 7.0+. Исходники и сборка находятся в текущей ветке.
           EOF
-          sed -i 's/^          //' /tmp/notes.md
-          gh release view apk-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-          gh release create apk-latest \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "Windows 11 — APK (скачать)" \
-            --notes-file /tmp/notes.md
-          gh release edit apk-latest --repo "$GITHUB_REPOSITORY" --notes-file /tmp/notes.md
-          gh release upload apk-latest dist/Windows11.apk --repo "$GITHUB_REPOSITORY" --clobber
-          echo "Release URL: $(gh release view apk-latest --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
+          if gh release view java-launcher-prototype --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit java-launcher-prototype --repo "$GITHUB_REPOSITORY" --prerelease --notes-file /tmp/notes.md
+          else
+            gh release create java-launcher-prototype --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Java Launcher 0.1 — прототип, запуск игры ещё не реализован" --notes-file /tmp/notes.md
+          fi
+          gh release upload java-launcher-prototype dist/JavaLauncher-prototype.apk --repo "$GITHUB_REPOSITORY" --clobber
