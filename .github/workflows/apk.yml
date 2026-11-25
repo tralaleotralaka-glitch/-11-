@@ -37,7 +37,18 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build-output.log
+
+      - name: Commit build log on failure
+        if: failure()
+        run: |
+          git config user.name "apk-bot"
+          git config user.email "apk-bot@users.noreply.github.com"
+          git add android/build-output.log
+          git commit -m "Лог сборки [skip ci]" || echo "нет изменений"
+          git push origin "HEAD:${GITHUB_REF_NAME}" || echo "push не удался"
 
       - name: Rename APK
         run: |
