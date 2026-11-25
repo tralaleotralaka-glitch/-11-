@@ -59,5 +59,18 @@ try:
     message = "PASS: own home -> engine menu; Java 8 unpacked. Minecraft gameplay NOT tested."
     (OUT / "engine-smoke-result.txt").write_text(message + "\n" + resumed + "\nRuntime: " + runtime)
     print(message)
+except Exception as error:
+    import traceback
+    log = adb("logcat", "-d", "-v", "threadtime", check=False)
+    lines = log.splitlines()
+    relevant = []
+    for i, line in enumerate(lines):
+        if any(word in line for word in ("FATAL EXCEPTION", "PojavCrashReport", "JREAuto", "AndroidRuntime", "Fatal signal")):
+            relevant.extend(lines[max(0, i-1):i+12])
+    activities = adb("shell", "dumpsys", "activity", "activities", check=False)
+    details = traceback.format_exc() + "\nRESUMED:\n" + "\n".join(x for x in activities.splitlines() if "ResumedActivity" in x) + "\nUI:\n" + window()[:12000] + "\nLOG:\n" + "\n".join(relevant)[-20000:]
+    details = details.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+    print('::error title=Emulator smoke diagnostics::' + details, flush=True)
+    raise
 finally:
     (OUT / "engine-smoke-logcat.txt").write_text(adb("logcat", "-d", "-v", "threadtime", check=False))
