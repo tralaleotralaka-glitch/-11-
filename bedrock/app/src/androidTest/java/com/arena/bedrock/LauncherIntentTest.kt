@@ -128,6 +128,17 @@ class LauncherIntentTest {
         waitForVersionTask(scenario)
     }
 
+    private fun requireVersion(scenario: ActivityScenario<MainActivity>): VersionRepository.Entry {
+        val repo = VersionRepository(context)
+        var status = ""
+        scenario.onActivity { activity ->
+            status = MainActivity::class.java.getDeclaredField("message").apply { isAccessible = true }.get(activity).toString()
+        }
+        val entries = repo.list()
+        assertTrue("APK not saved: $status; files=${repo.root.listFiles()?.joinToString { it.name }}", entries.isNotEmpty())
+        return entries.single()
+    }
+
     private fun fixture(): File {
         val file = File(context.filesDir, "versions/source.apk").apply { parentFile!!.mkdirs() }
         InstrumentationRegistry.getInstrumentation().context.assets.open("fixture-minecraft.apk").use { input -> file.outputStream().use { input.copyTo(it) } }
@@ -139,7 +150,7 @@ class LauncherIntentTest {
             val source = fixture()
             pickApk(scenario, source)
             val repo = VersionRepository(context)
-            val entry = repo.list().single()
+            val entry = requireVersion(scenario)
             assertEquals("test-fixture-not-minecraft", entry.version)
             assertEquals(1L, entry.code)
             assertEquals(64, entry.sha256.length)
@@ -175,7 +186,7 @@ class LauncherIntentTest {
                 .respondWith(android.app.Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null))
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 pickApk(scenario, fixture())
-                val entry = VersionRepository(context).list().single()
+                val entry = requireVersion(scenario)
                 onView(withContentDescription("tab_versions")).perform(click())
                 onView(withContentDescription("install_version_${entry.id}")).perform(scrollTo(), click())
                 assertTrue(androidx.test.espresso.intent.Intents.getIntents().none { it.action == installAction })
