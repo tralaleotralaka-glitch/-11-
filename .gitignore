@@ -17,3 +17,5 @@ android/build-output.log
 
 Windows11.apk
 android/app/src/main/assets/
+
+.engine-build/

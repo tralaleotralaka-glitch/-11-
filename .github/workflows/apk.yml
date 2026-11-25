@@ -1,8 +1,9 @@
-name: Build APK
+name: Build legacy 0.3 downloader
 
 on:
   push:
     branches: [ main, 'arena/**' ]
+    paths: ['android/**', 'www/**', 'scripts/pack_assets.sh', '.github/workflows/apk.yml']
   workflow_dispatch:
   repository_dispatch:
     types: [ build-apk ]
