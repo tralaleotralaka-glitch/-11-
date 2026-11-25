@@ -11,8 +11,8 @@ android {
         applicationId "com.arena.win11"
         minSdk 24
         targetSdk 34
-        versionCode 8
-        versionName "0.2-prototype"
+        versionCode 9
+        versionName "0.3-prototype"
     }
 
     signingConfigs {
@@ -46,5 +46,6 @@ android {
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
     implementation 'androidx.webkit:webkit:1.11.0'
 }

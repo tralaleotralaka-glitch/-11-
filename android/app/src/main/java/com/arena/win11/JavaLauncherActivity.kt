@@ -17,6 +17,11 @@ class JavaLauncherActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var download: Button
     private lateinit var refresh: Button
+    private lateinit var extraFiles: CheckBox
+    private lateinit var cancel: Button
+    @Volatile private var cancelled = false
+    private var stage = ""
+    private val logLock = Any()
     private var entries = listOf<JSONObject>()
     private var alive = true
     private val green = Color.rgb(121, 211, 134)
@@ -41,8 +46,8 @@ class JavaLauncherActivity : Activity() {
         }
         label("JAVA LAUNCHER", 13f, green)
         label("Minecraft: Java Edition", 28f)
-        label("Собственный лаунчер · прототип 0.2", 15f)
-        label("Это не Bedrock и не игра-имитация. Сейчас доступны каталог версий Mojang и загрузка клиента. Запуск игры ещё не реализован.", 16f)
+        label("Собственный лаунчер · прототип 0.3", 15f)
+        label("Это не Bedrock и не игра-имитация. Сейчас доступны каталог, клиент, Java-библиотеки и ресурсы. Запуск игры ещё не реализован.", 16f)
         label("Локальный профиль · без входа Microsoft", 18f, green)
         val prefs = getSharedPreferences("launcher_profile", MODE_PRIVATE)
         val nickname = EditText(this).apply {
@@ -80,11 +85,34 @@ class JavaLauncherActivity : Activity() {
         root.addView(versions)
         refresh = Button(this).apply { text = "Обновить список версий" }
         root.addView(refresh)
+        extraFiles = CheckBox(this).apply {
+            text = "Также скачать Java-библиотеки и ресурсы (возможны гигабайты)"
+            setTextColor(Color.WHITE)
+            isChecked = prefs.getBoolean("extra_files", false)
+            setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean("extra_files", checked).apply() }
+        }
+        root.addView(extraFiles)
         download = Button(this).apply { text = "Скачать клиент выбранной версии"; isEnabled = false }
         root.addView(download)
+        cancel = Button(this).apply { text = "Отменить загрузку"; isEnabled = false }
+        root.addView(cancel)
+        cancel.setOnClickListener {
+            cancelled = true
+            cancel.isEnabled = false
+            status.text = "Отмена запрошена; ожидание завершения сетевого чтения (до 30 секунд)…"
+        }
         status = label("Подключение к каталогу…", 15f)
+        val copyLog = Button(this).apply { text = "Скопировать диагностику" }
+        root.addView(copyLog)
+        copyLog.setOnClickListener {
+            val report = synchronized(logLock) { runCatching { logFile().readText() }.getOrDefault("Журнал недоступен") }
+            val info = "Java Launcher 0.3-prototype\nAndroid ${android.os.Build.VERSION.RELEASE}; ABI ${android.os.Build.SUPPORTED_ABIS.joinToString()}\n${status.text}\n$report"
+            (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("Launcher diagnostics", info))
+            Toast.makeText(this, "Диагностика скопирована", Toast.LENGTH_SHORT).show()
+        }
         label("Что ещё нужно для игры", 19f, green)
-        label("• Вход Microsoft с лицензией Minecraft\n• Java runtime для Android\n• Нативный графический слой и ввод\n• Библиотеки, ресурсы и запуск игрового процесса", 15f)
+        label("• Вход Microsoft с лицензией Minecraft\n• Java runtime для Android\n• Нативный графический слой и ввод\n• Android-совместимые native-библиотеки и запуск игрового процесса", 15f)
         label("Файлы хранятся в закрытой папке приложения. Удаление приложения удалит загруженные файлы. Прототип не связан с Mojang или Microsoft.", 12f)
         val scroll = ScrollView(this).apply { addView(root) }
         setContentView(scroll)
@@ -97,7 +125,29 @@ class JavaLauncherActivity : Activity() {
         runOnUiThread { if (alive && !isFinishing) action() }
     }
 
+    private fun logFile() = File(filesDir, "launcher.log")
+
+    private fun record(message: String) {
+        synchronized(logLock) {
+            // Diagnostics must not break recovery when storage is full.
+            runCatching {
+                val file = logFile()
+                if (file.length() > 131072) file.writeText("[Журнал сокращён]\n")
+                file.appendText("${java.util.Date()}: $message\n")
+            }
+        }
+    }
+
+    private fun checkCancelled() {
+        check(!cancelled && !Thread.currentThread().isInterrupted) { "Загрузка отменена" }
+    }
+
     private fun busy(value: Boolean) {
+        if (value) cancelled = false
+        cancel.isEnabled = value
+        extraFiles.isEnabled = !value
+        if (value) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         refresh.isEnabled = !value
         download.isEnabled = !value && entries.isNotEmpty()
         versions.isEnabled = !value
@@ -108,17 +158,28 @@ class JavaLauncherActivity : Activity() {
         val url = URL(address)
         require(url.protocol == "https" && url.host in setOf(
             "piston-meta.mojang.com", "piston-data.mojang.com",
-            "launchermeta.mojang.com", "launcher.mojang.com"
+            "launchermeta.mojang.com", "launcher.mojang.com",
+            "libraries.minecraft.net", "resources.download.minecraft.net"
         )) { "Недопустимый адрес загрузки" }
         return (url.openConnection() as java.net.HttpURLConnection).apply {
             connectTimeout = 15000
             readTimeout = 30000
             instanceFollowRedirects = false
-            setRequestProperty("User-Agent", "ArenaJavaLauncher/0.1")
+            setRequestProperty("User-Agent", "ArenaJavaLauncher/0.3")
         }
     }
 
     private fun fetch(address: String, target: File, expectedHash: String? = null, expectedSize: Long? = null) {
+        checkCancelled()
+        require(expectedSize == null || expectedSize in 0..2_147_483_648L) { "Недопустимый размер" }
+        require(expectedHash == null || expectedHash.matches(Regex("[a-fA-F0-9]{40}"))) { "Недопустимый SHA-1" }
+        if (expectedHash != null && GameFiles.verified(target, expectedHash, expectedSize) { cancelled }) return
+        if (expectedSize != null) check(target.parentFile!!.let { parent ->
+            parent.mkdirs()
+            parent.usableSpace > expectedSize + 32L * 1024 * 1024
+        }) { "Недостаточно свободного места" }
+        check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs()) { "Не удалось создать каталог" }
+        record("GET $address")
         val conn = connection(address)
         val temp = File(target.parentFile, target.name + ".part")
         try {
@@ -130,16 +191,17 @@ class JavaLauncherActivity : Activity() {
                 temp.outputStream().use { output ->
                     val buffer = ByteArray(65536)
                     while (true) {
-                        check(!Thread.currentThread().isInterrupted) { "Загрузка отменена" }
+                        checkCancelled()
                         val count = input.read(buffer)
                         if (count < 0) break
                         total += count
                         check(total <= (expectedSize ?: 16_777_216L)) { "Превышен размер файла" }
                         digest.update(buffer, 0, count)
                         output.write(buffer, 0, count)
-                        if (expectedSize != null && total >= nextUpdate) {
+                        if (expectedSize != null && expectedSize >= 1_048_576 && total >= nextUpdate) {
                             nextUpdate = total + 1_048_576
-                            ui { status.text = "Клиент: ${total / 1_048_576} / ${expectedSize / 1_048_576} МБ" }
+                            val message = "$stage: ${total / 1_048_576} / ${expectedSize / 1_048_576} МБ"
+                            ui { if (!cancelled) status.text = message }
                         }
                     }
                 }
@@ -147,6 +209,7 @@ class JavaLauncherActivity : Activity() {
             check(expectedSize == null || total == expectedSize) { "Файл загружен не полностью" }
             val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
             check(expectedHash == null || actual.equals(expectedHash, true)) { "Проверка SHA-1 не пройдена" }
+            checkCancelled()
             check(temp.renameTo(target)) { "Не удалось сохранить файл" }
         } finally {
             conn.disconnect()
@@ -160,26 +223,42 @@ class JavaLauncherActivity : Activity() {
         worker.execute {
             try {
                 val catalog = File(filesDir, "version_manifest_v2.json")
-                fetch("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", catalog)
+                var cached = false
+                try {
+                    fetch("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", catalog)
+                } catch (e: Exception) {
+                    checkCancelled()
+                    if (!catalog.isFile) throw e
+                    cached = true
+                    record("Каталог из кеша: ${e.message}")
+                }
                 val array = JSONObject(catalog.readText()).getJSONArray("versions")
                 val releases = (0 until array.length()).map { array.getJSONObject(it) }
                     .filter { it.getString("type") == "release" }
                 check(releases.isNotEmpty()) { "Каталог не содержит релизов" }
+                checkCancelled()
                 ui {
                     entries = releases
                     versions.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
                         releases.map { it.getString("id") })
-                    status.text = "Доступно ${releases.size} релизов. Загрузка клиента не означает готовность к игре."
+                    val saved = getSharedPreferences("launcher_profile", MODE_PRIVATE).getString("version_id", "")
+                    val index = releases.indexOfFirst { it.getString("id") == saved }
+                    if (index >= 0) versions.setSelection(index)
+                    status.text = "${if (cached) "Кешированный каталог. " else ""}Доступно ${releases.size} релизов. Запуск игры пока недоступен."
                     busy(false)
                 }
             } catch (e: Exception) {
-                ui { status.text = "Не удалось получить каталог: ${e.message}. Проверьте интернет и повторите."; busy(false) }
+                record("Ошибка каталога: ${e.stackTraceToString()}")
+                ui { status.text = if (cancelled) "Загрузка отменена" else "Не удалось получить каталог: ${e.message}. Повторите или скопируйте диагностику."; busy(false) }
             }
         }
     }
 
     private fun downloadSelected() {
         val selected = entries.getOrNull(versions.selectedItemPosition) ?: return
+        val includeFiles = extraFiles.isChecked
+        getSharedPreferences("launcher_profile", MODE_PRIVATE).edit()
+            .putString("version_id", selected.getString("id")).apply()
         busy(true)
         status.text = "Получение описания версии…"
         worker.execute {
@@ -191,20 +270,59 @@ class JavaLauncherActivity : Activity() {
                 fetch(selected.getString("url"), meta, selected.getString("sha1"))
                 val data = JSONObject(meta.readText())
                 val client = data.getJSONObject("downloads").getJSONObject("client")
+                stage = "Клиент $id"
                 fetch(client.getString("url"), File(dir, "$id.jar"), client.getString("sha1"), client.getLong("size"))
+                var librariesCount = 0
+                var assetsCount = 0
+                if (includeFiles) {
+                    val game = File(filesDir, "minecraft")
+                    val libraries = GameFiles.libraries(data, File(game, "libraries"))
+                    libraries.forEachIndexed { index, item ->
+                        stage = "Библиотека ${index + 1}/${libraries.size}"
+                        val message = stage
+                        ui { if (!cancelled) status.text = message }
+                        fetch(item.url, item.file, item.sha1, item.size)
+                    }
+                    librariesCount = libraries.size
+                    val assetIndex = data.optJSONObject("assetIndex")
+                        ?: error("У этой старой версии нет assetIndex. Поддержка legacy-ресурсов ещё не реализована.")
+                    val indexFile = GameFiles.child(File(game, "assets/indexes"), assetIndex.getString("id") + ".json")
+                    stage = "Индекс ресурсов"
+                    fetch(assetIndex.getString("url"), indexFile, assetIndex.getString("sha1"), assetIndex.getLong("size"))
+                    val indexData = JSONObject(indexFile.readText())
+                    check(!indexData.optBoolean("virtual") && !indexData.optBoolean("map_to_resources")) {
+                        "Для этой версии нужно legacy-размещение ресурсов; пока не поддерживается. Клиент и библиотеки сохранены."
+                    }
+                    val assets = GameFiles.assets(indexData, File(game, "assets/objects"))
+                    assets.forEachIndexed { index, item ->
+                        checkCancelled()
+                        stage = "Ресурс ${index + 1}/${assets.size}"
+                        // Avoid thousands of queued UI updates for small cached objects.
+                        if (index % 20 == 0 || index == assets.lastIndex) {
+                            val message = stage
+                            ui { if (!cancelled) status.text = message }
+                        }
+                        fetch(item.url, item.file, item.sha1, item.size)
+                    }
+                    assetsCount = assets.size
+                }
+                checkCancelled()
+                record("Скачано $id: libraries=$librariesCount assets=$assetsCount; includeFiles=$includeFiles. Запуск недоступен.")
                 val java = data.optJSONObject("javaVersion")?.optInt("majorVersion", 8) ?: 8
                 ui {
-                    status.text = "Клиент $id скачан, SHA-1 проверен. Требуется Java $java. Это только клиент: библиотеки, ресурсы, авторизация и запуск пока не реализованы."
+                    status.text = "Клиент $id проверен. Java-библиотек: $librariesCount, ресурсов: $assetsCount. Требуется Java $java. Это данные игры, НЕ рабочий запуск: Android JVM, графический слой и native-библиотеки отсутствуют."
                     busy(false)
                 }
             } catch (e: Exception) {
-                ui { status.text = "Ошибка загрузки: ${e.message}. Можно повторить."; busy(false) }
+                record("Ошибка установки: ${e.stackTraceToString()}")
+                ui { status.text = if (cancelled) "Загрузка отменена. Проверенные файлы сохранены; повтор пропустит их." else "Ошибка загрузки: ${e.message}. Повторите или скопируйте диагностику."; busy(false) }
             }
         }
     }
 
     override fun onDestroy() {
         alive = false
+        cancelled = true
         worker.shutdownNow()
         super.onDestroy()
     }

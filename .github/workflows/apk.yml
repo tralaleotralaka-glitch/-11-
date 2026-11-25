@@ -44,14 +44,14 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/JavaLauncher-prototype.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/JavaLauncher-0.3.apk
           ls -la dist
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JavaLauncher-prototype
-          path: dist/JavaLauncher-prototype.apk
+          name: JavaLauncher-0.3
+          path: dist/JavaLauncher-0.3.apk
           if-no-files-found: error
           retention-days: 90
 
@@ -60,17 +60,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > /tmp/notes.md <<'EOF'
-          Собственный нативный Java Launcher — прототип 0.2, НЕ готовый игровой лаунчер.
+          Собственный нативный Java Launcher — прототип 0.3, НЕ готовый игровой лаунчер.
 
-          Работает: локальный профиль (ник и офлайн-UUID без Microsoft, не лицензия), каталог релизов Mojang, выбор версии, загрузка описания и client.jar с проверкой SHA-1.
-          НЕ реализовано: вход Microsoft, Android JVM, графический слой, библиотеки/ресурсы и запуск игры.
+          Работает: локальный профиль (ник и офлайн-UUID без Microsoft, не лицензия), каталог релизов Mojang, выбор версии, загрузка описания и client.jar с проверкой SHA-1. Дополнительно: Java-библиотеки, assets с проверкой, пропуск проверенных файлов, отмена загрузки, кеш каталога и копирование диагностики.
+          НЕ реализовано: вход Microsoft, Android JVM, графический слой, Android native-библиотеки и запуск игры. Legacy-размещение ресурсов пока не поддерживается.
           Этот APK пока НЕ запускает Minecraft. Не содержит Minecraft и не открывает Bedrock.
           Установка поверх Windows11.apk меняет главный экран приложения на прототип лаунчера.
           Android 7.0+. Исходники и сборка находятся в текущей ветке.
           EOF
-          if gh release view java-launcher-prototype --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit java-launcher-prototype --repo "$GITHUB_REPOSITORY" --prerelease --title "Java Launcher 0.2 — локальный профиль, запуск игры ещё не реализован" --notes-file /tmp/notes.md
+          if gh release view java-launcher-0.3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit java-launcher-0.3 --repo "$GITHUB_REPOSITORY" --prerelease --title "Java Launcher 0.3 — библиотеки и ресурсы, запуск игры ещё не реализован" --notes-file /tmp/notes.md
           else
-            gh release create java-launcher-prototype --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Java Launcher 0.2 — прототип, запуск игры ещё не реализован" --notes-file /tmp/notes.md
+            gh release create java-launcher-0.3 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Java Launcher 0.3 — прототип, запуск игры ещё не реализован" --notes-file /tmp/notes.md
           fi
-          gh release upload java-launcher-prototype dist/JavaLauncher-prototype.apk --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload java-launcher-0.3 dist/JavaLauncher-0.3.apk --repo "$GITHUB_REPOSITORY" --clobber
