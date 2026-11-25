@@ -41,8 +41,40 @@ class JavaLauncherActivity : Activity() {
         }
         label("JAVA LAUNCHER", 13f, green)
         label("Minecraft: Java Edition", 28f)
-        label("Собственный лаунчер · прототип 0.1", 15f)
+        label("Собственный лаунчер · прототип 0.2", 15f)
         label("Это не Bedrock и не игра-имитация. Сейчас доступны каталог версий Mojang и загрузка клиента. Запуск игры ещё не реализован.", 16f)
+        label("Локальный профиль · без входа Microsoft", 18f, green)
+        val prefs = getSharedPreferences("launcher_profile", MODE_PRIVATE)
+        val nickname = EditText(this).apply {
+            hint = "Ник игрока"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            filters = arrayOf(android.text.InputFilter.LengthFilter(16))
+            setText(prefs.getString("offline_name", "Player"))
+        }
+        root.addView(nickname)
+        val profileInfo = label("", 13f)
+        fun showProfile(profile: OfflineProfile) {
+            profileInfo.text = "Локальный ник: ${profile.name}\nОфлайн-UUID: ${profile.uuid}\nЭто не авторизованный аккаунт Minecraft."
+        }
+        try { showProfile(OfflineProfile.create(nickname.text.toString())) } catch (_: IllegalArgumentException) {
+            profileInfo.text = "Введите ник и сохраните профиль."
+        }
+        val saveProfile = Button(this).apply { text = "Сохранить локальный профиль" }
+        root.addView(saveProfile)
+        saveProfile.setOnClickListener {
+            try {
+                val profile = OfflineProfile.create(nickname.text.toString())
+                prefs.edit().putString("offline_name", profile.name).apply()
+                nickname.error = null
+                showProfile(profile)
+            } catch (e: IllegalArgumentException) {
+                nickname.error = e.message
+            }
+        }
+        label("Локальный профиль не выдаёт лицензию, не заменяет вход на серверы с проверкой аккаунта и пока не подключён к запуску игры.", 13f)
         label("Версия игры", 16f, green)
         versions = Spinner(this)
         root.addView(versions)

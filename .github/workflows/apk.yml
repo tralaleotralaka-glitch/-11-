@@ -39,7 +39,7 @@ jobs:
         working-directory: android
         run: |
           set -o pipefail
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build-output.log
+          ./gradlew testDebugUnitTest assembleDebug --no-daemon --stacktrace 2>&1 | tee build-output.log
 
       - name: Rename APK
         run: |
@@ -60,17 +60,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > /tmp/notes.md <<'EOF'
-          Собственный нативный Java Launcher — прототип 0.1, НЕ готовый игровой лаунчер.
+          Собственный нативный Java Launcher — прототип 0.2, НЕ готовый игровой лаунчер.
 
-          Работает: каталог релизов Mojang, выбор версии, загрузка описания и client.jar с проверкой SHA-1.
+          Работает: локальный профиль (ник и офлайн-UUID без Microsoft, не лицензия), каталог релизов Mojang, выбор версии, загрузка описания и client.jar с проверкой SHA-1.
           НЕ реализовано: вход Microsoft, Android JVM, графический слой, библиотеки/ресурсы и запуск игры.
           Этот APK пока НЕ запускает Minecraft. Не содержит Minecraft и не открывает Bedrock.
           Установка поверх Windows11.apk меняет главный экран приложения на прототип лаунчера.
           Android 7.0+. Исходники и сборка находятся в текущей ветке.
           EOF
           if gh release view java-launcher-prototype --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit java-launcher-prototype --repo "$GITHUB_REPOSITORY" --prerelease --notes-file /tmp/notes.md
+            gh release edit java-launcher-prototype --repo "$GITHUB_REPOSITORY" --prerelease --title "Java Launcher 0.2 — локальный профиль, запуск игры ещё не реализован" --notes-file /tmp/notes.md
           else
-            gh release create java-launcher-prototype --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Java Launcher 0.1 — прототип, запуск игры ещё не реализован" --notes-file /tmp/notes.md
+            gh release create java-launcher-prototype --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Java Launcher 0.2 — прототип, запуск игры ещё не реализован" --notes-file /tmp/notes.md
           fi
           gh release upload java-launcher-prototype dist/JavaLauncher-prototype.apk --repo "$GITHUB_REPOSITORY" --clobber
