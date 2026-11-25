@@ -48,7 +48,7 @@ public final class HomeActivity extends Activity {
         text("Minecraft: Java Edition", 28, white);
         text("Теперь с игровым движком", 20, green);
         text("В APK включены Android Java runtime, графический мост и сенсорное управление PojavLauncher. Это не Bedrock и не веб-имитация.", 16, white);
-        button("Открыть игровое меню", view -> {
+        Button openEngine = button("Открыть игровое меню", view -> {
             try {
                 Intent intent = new Intent();
                 intent.setClassName(this, "net.kdt.pojavlaunch.TestStorageActivity");
@@ -58,6 +58,7 @@ public final class HomeActivity extends Activity {
                     .setMessage(e.toString()).setPositiveButton("OK", null).show();
             }
         });
+        openEngine.setContentDescription("open_engine");
         text("Первый запуск", 20, green);
         text("1. Откройте игровое меню кнопкой ниже. Дождитесь распаковки Java.\n2. Выберите аккаунт. Для серверов с проверкой аккаунта нужен вход Microsoft и владение игрой. Локальный профиль не является лицензией.\n3. Создайте профиль версии. Для первой проверки рекомендуется Vanilla 1.12.2, Java 8 и GL4ES.\n4. Нажмите «Играть» и дождитесь загрузки файлов. Нужны интернет и свободное место.", 16, white);
         text("Android " + Build.VERSION.RELEASE + " · " + android.text.TextUtils.join(", ", Build.SUPPORTED_ABIS), 13, white);

@@ -30,9 +30,9 @@ try:
     clicked = False
     while time.monotonic() < deadline:
         xml = window()
-        if "Открыть игровое меню" in xml:
+        if 'content-desc="open_engine"' in xml:
             tree = ET.fromstring(xml)
-            node = next(n for n in tree.iter("node") if n.get("text") == "Открыть игровое меню")
+            node = next(n for n in tree.iter("node") if n.get("content-desc") == "open_engine")
             x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
             (OUT / "home-smoke.png").write_bytes(adb("exec-out", "screencap", "-p", binary=True))
             adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
