@@ -29,7 +29,6 @@ import java.util.zip.ZipOutputStream
 @RunWith(AndroidJUnit4::class)
 class LauncherIntentTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
-    private val testContext get() = InstrumentationRegistry.getInstrumentation().context
 
     @Before fun reset() {
         context.getSharedPreferences("bedrock", Context.MODE_PRIVATE).edit().clear().commit()
@@ -42,16 +41,16 @@ class LauncherIntentTest {
             override fun onReceive(context: Context?, intent: Intent?) { result = intent; latch.countDown() }
         }
         val filter = IntentFilter("com.arena.bedrock.TEST_RESULT")
-        if (Build.VERSION.SDK_INT >= 33) testContext.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+        if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
         else {
             @Suppress("DEPRECATION")
-            testContext.registerReceiver(receiver, filter)
+            context.registerReceiver(receiver, filter)
         }
         try {
             action()
             assertTrue("Test game did not receive an intent", latch.await(30, TimeUnit.SECONDS))
             return result ?: throw AssertionError("Missing result")
-        } finally { testContext.unregisterReceiver(receiver) }
+        } finally { context.unregisterReceiver(receiver) }
     }
 
     @Test fun playOpensOnlyOfficialPackage() {

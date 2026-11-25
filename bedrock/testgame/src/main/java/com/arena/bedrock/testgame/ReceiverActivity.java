@@ -21,7 +21,7 @@ public final class ReceiverActivity extends Activity {
         label.setText("TEST RECEIVER — NOT MINECRAFT\n" + source.getAction() + "\n" + source.getData());
         setContentView(label);
         Intent result = new Intent("com.arena.bedrock.TEST_RESULT");
-        result.setPackage("com.arena.bedrock.test");
+        result.setPackage("com.arena.bedrock");
         result.putExtra("action", source.getAction());
         result.putExtra("uri", source.getDataString());
         result.putExtra("mime", source.getType());
