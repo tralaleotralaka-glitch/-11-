@@ -22,6 +22,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 /** WebView без системной клавиатуры: ввод идёт через встроенную сенсорную клавиатуру приложения */
