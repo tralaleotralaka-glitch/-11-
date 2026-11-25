@@ -1,0 +1,7 @@
+{
+  "name": "win11-clone",
+  "private": true,
+  "description": "Сборка и тесты Windows 11 web clone (jsdom smoke test)",
+  "scripts": { "test": "node scripts/smoke_test.mjs" },
+  "devDependencies": { "jsdom": "^24.0.0" }
+}

@@ -131,7 +131,7 @@ APPS.settings.render = function(body, win){
             <div class="sb-top">
               <div class="sb-gfx ${Battery.charging?'chg':''}"><i style="height:${pct}%"></i><b>${pct}%</b></div>
               <div class="sc-body"><div class="sc-title" style="font-size:16px">${Battery.charging?'⚡ Заряжается':'От батареи'}</div>
-              <div class="sc-sub">${Battery.leftText()}</div>
+              <div class="sc-sub">${Battery.leftText()}${Battery.real && Battery.temp ? ` • температура ${Battery.temp.toFixed(0)}°C` : ''}</div>
               <div class="sc-sub" style="color:var(--txt3)">${Battery.real?'Данные с устройства Android':'Демо-режим: симуляция расхода'}</div></div>
             </div>
             <div class="se-chart">
@@ -162,23 +162,54 @@ APPS.settings.render = function(body, win){
           b.classList.add('on');
         }));
       } else if(sub==='about'){
+        const info = Bridge.deviceInfo();
+        const gb = b => (b/1073741824).toFixed(1);
+        const dpr = window.devicePixelRatio || 1;
+        const devName = S.data.deviceName || (info ? info.model : 'DESKTOP-ARENA11');
+        const install = S.data.installDate ? new Date(S.data.installDate).toLocaleDateString('ru-RU') : '24.11.2026';
+        const hwRows = info ? [
+          ['Имя устройства', esc(devName)],
+          ['Полное имя', esc(`${info.manufacturer||''} ${info.model||''}`.trim())],
+          ['Процессор', `${info.cpuCores}-ядерный (${info.abi||'ARM64'})`],
+          ['Оперативная память', `${gb(info.ramTotal)} ГБ (доступно: ${gb(info.ramAvail)} ГБ)`],
+          ['Дисплей', `${Math.round(info.screenW*dpr)} × ${Math.round(info.screenH*dpr)} • ${Math.round(info.density||dpr*160)} dpi`],
+          ['Накопитель', `свободно ${gb(info.storageFree)} ГБ из ${gb(info.storageTotal)} ГБ`],
+          ['Тип системы', '64-разрядная ОС, процессор ARM64'],
+        ] : [
+          ['Имя устройства', esc(devName)],
+          ['Процессор', 'Intel Core i5-12400, 2,50 ГГц'],
+          ['Оперативная память', '16,0 ГБ (доступно: 10,9 ГБ)'],
+          ['Дисплей', `${innerWidth} × ${innerHeight} • 96 dpi`],
+          ['Код устройства', '1A2B-3C4D-11E6-2026'],
+          ['Код продукта', '00330-80000-00000-AA112'],
+          ['Тип системы', '64-разрядная, процессор x64'],
+        ];
         pageEl.innerHTML = `<div class="se-crumb">Система › <b>О системе</b></div><div class="se-h1">О системе</div>
-          <div class="se-about-logo"><img src="assets/boot-logo.png"><div><div class="sa-t">DESKTOP-ARENA11</div><div class="sa-s">Переименовать этот компьютер</div></div></div>
-          <div class="se-card col"><div class="sc-title" style="font-weight:600">Характеристики устройства</div>
+          <div class="se-about-logo"><img src="assets/boot-logo.png"><div><div class="sa-t">${esc(devName)}</div><button class="btn small" id="se-rename" style="margin-top:5px">Переименовать это устройство</button></div></div>
+          <div class="se-card col"><div class="sc-title" style="font-weight:600">Характеристики устройства${info?' <span style="color:var(--acc);font-size:11px;font-weight:400">— реальные данные вашего девайса</span>':''}</div>
             <table class="se-specs">
-              <tr><td>Процессор</td><td>Intel Core i5-12400, 2,50 ГГц</td></tr>
-              <tr><td>Оперативная память</td><td>16,0 ГБ (доступно: 10,9 ГБ)</td></tr>
-              <tr><td>Код устройства</td><td>1A2B-3C4D-11E6-2026</td></tr>
-              <tr><td>Код продукта</td><td>00330-80000-00000-AA112</td></tr>
-              <tr><td>Тип системы</td><td>64-разрядная, процессор x64</td></tr>
+              ${hwRows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}
             </table></div>
           <div class="se-card col"><div class="sc-title" style="font-weight:600">Характеристики Windows</div>
             <table class="se-specs">
               <tr><td>Выпуск</td><td>Windows 11 Pro</td></tr>
               <tr><td>Версия</td><td>23H2</td></tr>
-              <tr><td>Дата установки</td><td>24.11.2026</td></tr>
+              <tr><td>Дата установки</td><td>${install}</td></tr>
               <tr><td>Сборка ОС</td><td>22631.4460</td></tr>
+              ${info?`<tr><td>Оболочка на базе</td><td>Android ${esc(info.android||'')} (SDK ${esc(String(info.sdk||''))})</td></tr>`:''}
             </table></div>`;
+        pageEl.querySelector('#se-rename').addEventListener('click', e=>{
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          Ctx.build([
+            {label:'Новое имя устройства:', input:'', action:val=>{
+              if(!val.trim()) return;
+              S.data.deviceName = val.trim(); S.changed();
+              render();
+              toast('О системе', `Устройство переименовано в «${val.trim()}»`, 'pc');
+            }},
+          ], r.left-40, r.bottom+8);
+        });
       }
     }
     else if(cur==='taskbar'){
@@ -326,6 +357,14 @@ APPS.settings.render = function(body, win){
     });
   });
   body.querySelector('.se-nav[data-p="system"]').classList.add('on');
+
+  /* компактный сайдбар по ширине ОКНА, а не экрана */
+  const applyCompact = ()=>{
+    const root = body.querySelector('.se-root');
+    if(root) root.classList.toggle('compact', win.el.clientWidth < 800);
+  };
+  applyCompact();
+  win.timers.push(setInterval(applyCompact, 400));
 
   render();
 };

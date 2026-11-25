@@ -109,6 +109,9 @@ Object.assign(I, {
 
   /* Смартфон (для доступа к файлам) */
   phone: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="2.8" width="10" height="18.4" rx="2.6"/><path d="M10.5 5.4h3" stroke-linecap="round"/><circle cx="12" cy="17.8" r="1.1" fill="currentColor" stroke="none"/></svg>`,
+
+  /* Клавиатура (трей) */
+  kb: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><path d="M5.8 9h.01M9 9h.01M12.2 9h.01M15.4 9h.01M18.6 9h.01M5.8 12h.01M9 12h.01M12.2 12h.01M15.4 12h.01M18.6 12h.01M8 15h8"/></svg>`,
 });
 
 /* Диспетчер задач — системное приложение */

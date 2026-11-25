@@ -187,7 +187,7 @@ input,textarea{font-family:inherit}
 .st-empty{padding:30px 6px;color:var(--txt2);font-size:12.5px;text-align:center}
 
 /* ---- Быстрые действия ---- */
-#qs{right:12px;width:360px;padding:20px 18px 14px}
+#qs{right:12px;width:360px;max-height:calc(100vh - 64px);overflow-y:auto;padding:20px 18px 14px}
 .qs-tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:18px}
 .qs-tile{height:74px;border-radius:6px;background:var(--card);border:1px solid var(--stroke);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;font-size:11px;color:var(--txt);transition:background .12s;padding:4px 2px;text-align:center}
 .qs-tile svg{width:18px;height:18px}
@@ -213,7 +213,7 @@ input,textarea{font-family:inherit}
 .wsl:active::-webkit-slider-thumb{border-width:6px;margin-top:-7px}
 
 /* ---- Календарь ---- */
-#cal{right:12px;width:380px;max-height:calc(100vh - 76px);display:flex;flex-direction:column;padding:8px}
+#cal{right:12px;width:380px;max-height:calc(100vh - 64px);overflow-y:auto;display:flex;flex-direction:column;padding:8px}
 .cal-notif{padding:8px;min-height:64px;max-height:200px;overflow-y:auto;border-bottom:1px solid var(--stroke);margin-bottom:6px}
 .cal-n-item{display:flex;gap:11px;padding:9px 10px;border-radius:6px;background:var(--card);border:1px solid var(--stroke);margin-bottom:6px}
 .cal-n-item .cn-ico{width:20px;height:20px;flex-shrink:0;margin-top:2px}
@@ -676,6 +676,63 @@ select.winp{background:var(--card);border:1px solid var(--stroke2);border-radius
 .se-about-logo .sa-s{font-size:12px;color:var(--txt2)}
 .se-toggle-row{cursor:pointer}
 
+/* ============ v3: встроенная клавиатура ============ */
+#osk{position:absolute;left:0;right:0;bottom:0;z-index:5200;background:rgba(36,36,40,.94);backdrop-filter:blur(26px) saturate(1.3);-webkit-backdrop-filter:blur(26px) saturate(1.3);border-top:1px solid var(--stroke2);padding:7px 8px 9px;transform:translateY(105%);transition:transform .18s ease-out;display:none;box-shadow:0 -10px 30px rgba(0,0,0,.4)}
+#osk.open{display:block;transform:translateY(0)}
+.kb-wrap{max-width:760px;margin:0 auto}
+.kb-row{display:flex;gap:4px;margin-bottom:4px}
+.kb-row:last-child{margin-bottom:0}
+.kb-key{flex:1;height:42px;border-radius:6px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.05);color:var(--txt);font-size:15px;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.kb-key:active{background:var(--acc);color:#fff;border-color:var(--acc)}
+.kb-key.kb-sp{flex:.75;max-width:62px;font-size:13px;background:rgba(255,255,255,.055);color:var(--txt2)}
+.kb-key.kb-shift.on{background:var(--acc);color:#fff}
+.kb-key.kb-space{flex:4.2;color:var(--txt2);font-size:12.5px}
+.kb-key.kb-enter{background:var(--acc);color:#fff;border-color:var(--acc)}
+.kb-key.kb-hide{color:var(--txt2)}
+
+/* ============ v3: компактный режим для низких экранов (телефон в landscape) ============ */
+@media (max-height:520px){
+  #start{height:min(660px, calc(100% - 58px));padding-top:22px}
+  .st-search{margin:0 28px 12px;height:32px}
+  .st-body{padding:0 28px}
+  .st-grid{margin-bottom:12px;gap:1px}
+  .st-app{height:60px;gap:3px;padding:2px}
+  .st-app svg,.st-app .sa-ico{width:26px;height:26px}
+  .st-app span{font-size:10.5px}
+  .st-reco-list{display:none}
+  .st-foot{height:52px;margin:0 18px}
+  .st-all-item{padding:5px 10px}
+  .st-all-letter{padding:7px 10px 2px}
+  #cal{max-height:calc(100% - 62px)}
+  .cal-notif{max-height:64px;min-height:44px}
+  .cal-n-empty{padding:12px 0}
+  .cal-bottom{padding:2px 8px 8px}
+  .cal-time{font-size:24px}
+  .cal-dow{margin-top:0}
+  .cal-head{margin:8px 2px 4px}
+  .cal-grid .cg-day{height:26px;font-size:11px}
+  .cal-grid .cg-dow{padding:3px 0}
+  #qs{max-height:calc(100% - 62px);overflow-y:auto;padding:14px 16px 10px}
+  .qs-tiles{margin-bottom:10px;gap:6px}
+  .qs-tile{height:56px;gap:4px;font-size:10px}
+  .qs-tile svg{width:15px;height:15px}
+  .qs-slider{padding:5px 8px}
+  #searchpanel{height:min(560px, calc(100% - 58px))}
+}
+@media (max-height:420px){
+  .st-app{height:52px}
+  .st-app svg,.st-app .sa-ico{width:22px;height:22px}
+  .cal-grid .cg-day{height:22px}
+  .qs-tile{height:50px}
+}
+/* компактные сайдбары по ширине ОКНА (управляются JS) */
+.ex-root.compact .ex-side{width:56px;padding:10px 6px}
+.ex-root.compact .ex-side-item span{display:none}
+.se-root.compact .se-side{width:66px;padding:14px 8px}
+.se-root.compact .se-search,.se-root.compact .se-user{display:none}
+.se-root.compact .se-nav{justify-content:center;padding:10px}
+.se-root.compact .se-nav span{display:none}
+
 /* ============ v2: батарея, трей, диспетчер задач, календарь ============ */
 .tray-bat-pct{font-size:12px;color:var(--txt);margin-left:2px;font-weight:400}
 #taskbar.left .tb-c{justify-content:flex-start;padding-left:6px}
@@ -742,16 +799,10 @@ select.winp{background:var(--card);border:1px solid var(--stroke2);border-radius
   .tb-weather .tbw-desc{display:none}
   .tb-search-pill .sp-text{display:none}
   .tb-search-pill{width:40px;padding:0;justify-content:center;border-radius:5px}
-  .ex-side{width:56px;padding:10px 6px}
-  .ex-side-item span{display:none}
-  .se-side{width:66px;padding:14px 8px}
-  .se-side .se-search,.se-side .se-user,.se-nav span{display:none}
-  .se-nav{justify-content:center;padding:10px}
   .sto-hero{min-height:150px;padding:20px}
   .sto-hero .sh-ico{width:60px;height:60px}
   .sto-hero .sh-name{font-size:19px}
   #toasts{width:calc(100vw - 24px)}
-  .tray-bat-pct{display:none}
   .cal-time{font-size:26px}
   .sb-top{gap:14px}
   .sb-gfx{width:52px;height:92px}

@@ -199,6 +199,13 @@ APPS.explorer.render = function(body, win){
     ], e.clientX, e.clientY);
   });
   render();
+  /* компактный сайдбар по ширине окна */
+  const applyCompact = ()=>{
+    const root = body.querySelector('.ex-root');
+    if(root) root.classList.toggle('compact', win.el.clientWidth < 700);
+  };
+  applyCompact();
+  win.timers.push(setInterval(applyCompact, 400));
 };
 
 /* ---------- Microsoft Edge ---------- */

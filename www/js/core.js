@@ -87,6 +87,10 @@ const Bridge = {
     if(!this.available) return null;
     try{ return JSON.parse(AndroidBridge.getBattery()); }catch(e){ return null; }
   },
+  deviceInfo(){
+    if(!this.available) return null;
+    try{ return JSON.parse(AndroidBridge.getDeviceInfo()); }catch(e){ return null; }
+  },
 };
 
 /* ---------- Батарея (реальная на телефоне, симуляция в браузере) ---------- */
@@ -95,7 +99,9 @@ const Battery = {
   refresh(){
     const b = Bridge.battery();
     if(b && typeof b.level === 'number'){
-      this.level = b.level; this.charging = !!b.charging; this.real = true; return;
+      this.level = b.level; this.charging = !!b.charging; this.real = true;
+      this.temp = typeof b.temp === 'number' ? b.temp : this.temp;
+      return;
     }
     if(!this._t0) this._t0 = Date.now();
     const hours = (Date.now()-this._t0)/3600000;
@@ -459,7 +465,6 @@ const UI = {
     const pct = Battery.pct();
     const el = document.querySelector('.tray-bat-pct');
     if(el) el.textContent = pct + '%';
-    const lk = $('#lock'); // батарея на экране блокировки не нужна, но обновим QS если открыт
   },
 
   /* ==== рабочий стол: значки ==== */
@@ -859,7 +864,9 @@ const Power = {
       lk.classList.remove('open','hide');
       AudioFX.startup();
       if(S.data.firstRun){
-        S.data.firstRun=false; S.changed();
+        S.data.firstRun=false;
+        S.data.installDate = S.data.installDate || new Date().toISOString();
+        S.changed();
         setTimeout(()=>toast('Добро пожаловать!','Это Windows 11. Откройте Microsoft Store, чтобы установить приложения.','win'), 700);
       }
     }, 380);
@@ -890,6 +897,7 @@ const Power = {
 /* ---------- Инициализация ---------- */
 function initSystem(){
   S.load();
+  KB.init();
   applyTheme(); applyAccent(); applyWallpaper(); applyTransparency();
   AudioFX.setVolume(S.data.volume);
   setBrightness(S.data.brightness);
@@ -925,6 +933,8 @@ function initSystem(){
     });
   });
   $('#tb-clock').addEventListener('click', ()=>UI.toggleFlyout('#cal', ()=>UI.renderCal()));
+  $('#tb-kbd').innerHTML = I.kb;
+  $('#tb-kbd').addEventListener('click', ()=>KB.toggle());
   $('#tb-showdesk').addEventListener('click', ()=>{
     let anyVisible=false;
     WM.wins.forEach(w=>{ if(!w.min) anyVisible=true; });

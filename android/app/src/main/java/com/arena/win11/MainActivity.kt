@@ -1,6 +1,8 @@
 package com.arena.win11
 
 import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -9,7 +11,9 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.StatFs
 import android.util.Base64
+import android.util.DisplayMetrics
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -18,8 +22,12 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
-import java.io.ByteArrayOutputStream
 import java.io.File
+
+/** WebView без системной клавиатуры: ввод идёт через встроенную сенсорную клавиатуру приложения */
+class NoImeWebView(context: Context) : WebView(context) {
+    override fun onCheckIsTextEditor(): Boolean = false
+}
 
 class MainActivity : Activity() {
 
@@ -58,6 +66,38 @@ class MainActivity : Activity() {
                 val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                         status == BatteryManager.BATTERY_STATUS_FULL
                 """{"ok":true,"level":$pct,"charging":$charging,"temp":$temp}"""
+            } catch (e: Exception) {
+                """{"ok":false,"error":"${jsonStr(e.message ?: "?")}"}"""
+            }
+        }
+
+        @JavascriptInterface
+        fun getDeviceInfo(): String {
+            return try {
+                val mem = ActivityManager.MemoryInfo()
+                (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(mem)
+                val stat = StatFs(Environment.getExternalStorageDirectory().path)
+                val dm = DisplayMetrics()
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay.getMetrics(dm)
+                val abi = if (Build.SUPPORTED_ABIS.isNotEmpty()) Build.SUPPORTED_ABIS[0] else "unknown"
+                val dpr = resources.displayMetrics.density
+                """{"ok":true,
+                    "model":"${jsonStr(Build.MODEL)}",
+                    "manufacturer":"${jsonStr(Build.MANUFACTURER)}",
+                    "brand":"${jsonStr(Build.BRAND)}",
+                    "android":"${jsonStr(Build.VERSION.RELEASE)}",
+                    "sdk":${Build.VERSION.SDK_INT},
+                    "ramTotal":${mem.totalMem},
+                    "ramAvail":${mem.availMem},
+                    "cpuCores":${Runtime.getRuntime().availableProcessors()},
+                    "abi":"${jsonStr(abi)}",
+                    "screenW":${dm.widthPixels},
+                    "screenH":${dm.heightPixels},
+                    "density":$dpr,
+                    "storageTotal":${stat.totalBytes},
+                    "storageFree":${stat.availableBytes}
+                }""".replace(Regex("\\s+"), " ")
             } catch (e: Exception) {
                 """{"ok":false,"error":"${jsonStr(e.message ?: "?")}"}"""
             }
@@ -136,7 +176,7 @@ class MainActivity : Activity() {
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
-        webView = WebView(this)
+        webView = NoImeWebView(this)
         setContentView(webView)
         webView.setBackgroundColor(Color.parseColor("#0A0F1C"))
 
@@ -144,7 +184,8 @@ class MainActivity : Activity() {
         s.javaScriptEnabled = true
         s.domStorageEnabled = true
         s.databaseEnabled = true
-        s.cacheMode = WebSettings.LOAD_DEFAULT
+        // Ресурсы локальные — читаем всегда свежие, чтобы не подмешивался кэш прошлых версий
+        s.cacheMode = WebSettings.LOAD_NO_CACHE
         s.mediaPlaybackRequiresUserGesture = false
         s.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         s.allowFileAccess = false

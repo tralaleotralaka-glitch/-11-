@@ -46,6 +46,7 @@
     </div>
     <div class="tb-r">
       <button class="tb-ibtn tb-tray" id="tb-chev" title="Скрытые значки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10l6 5 6-5"/></svg></button>
+      <button class="tb-tray-btn" id="tb-kbd" title="Сенсорная клавиатура"><span class="tray-kbd"></span></button>
       <button class="tb-tray-btn" id="tb-status" title="Сеть, звук, батарея">
         <span class="tray-wifi"></span><span class="tray-vol"></span><span class="tray-bat"></span><b class="tray-bat-pct">86%</b>
       </button>
@@ -101,6 +102,9 @@
   <!-- Контекстное меню -->
   <div id="ctx"></div>
 
+  <!-- Встроенная сенсорная клавиатура -->
+  <div id="osk"></div>
+
   <!-- Уведомления -->
   <div id="toasts"></div>
 
@@ -114,6 +118,7 @@
 </div>
 <script src="js/data.js"></script>
 <script src="js/icons2.js"></script>
+<script src="js/keyboard.js"></script>
 <script src="js/core.js"></script>
 <script src="js/apps.js"></script>
 <script src="js/store.js"></script>
