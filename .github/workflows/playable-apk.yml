@@ -28,13 +28,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test project overlay
         run: python3 -m unittest discover -s scripts -p test_prepare_engine.py -v
-      - name: Checkout pinned open-source engine
-        uses: actions/checkout@v4
-        with:
-          repository: PojavLauncherTeam/PojavLauncher
-          ref: 6b0ff501cc5fc8fe79d29ecd2244192a2f66e6c7
-          path: .engine-build
-          persist-credentials: false
+      - name: Extract pinned open-source engine
+        run: |
+          mkdir -p dist .engine-build
+          curl --fail --location --retry 3 https://codeload.github.com/PojavLauncherTeam/PojavLauncher/tar.gz/6b0ff501cc5fc8fe79d29ecd2244192a2f66e6c7 -o dist/engine-source.tar.gz
+          tar -xzf dist/engine-source.tar.gz --strip-components=1 -C .engine-build
       - name: Fetch official Android Java runtime bundles
         env:
           GH_TOKEN: ${{ github.token }}
@@ -84,7 +82,8 @@ jobs:
         run: |
           mkdir -p dist/source/project
           git archive HEAD | tar -x -C dist/source/project
-          git -C .engine-build archive HEAD | tar -x -C dist/source
+          mkdir -p dist/source/engine
+          tar -xzf dist/engine-source.tar.gz --strip-components=1 -C dist/source/engine
           cp dist/runtime-origin.sha256 dist/source/
           cd dist/source
           zip -qr ../JavaLauncher-0.4-sources.zip .
