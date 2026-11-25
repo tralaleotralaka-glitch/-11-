@@ -595,26 +595,114 @@ const UI = {
   },
 
   /* ==== меню Пуск ==== */
+  /* ==== меню Пуск (v4 — как в настоящем Windows 11) ==== */
+  stPage: 0,
+
+  addRecent(name, app, icon){
+    let r = S.data.recent || [];
+    r = r.filter(x=>x.name!==name);
+    r.unshift({name, app, icon:icon||APPS[app]&&APPS[app].icon||'file', t:Date.now()});
+    S.data.recent = r.slice(0,6);
+    S.changed();
+  },
+
+  tileMenu(e, appId){
+    e.preventDefault(); e.stopPropagation();
+    const pinnedTb = TASKBAR_PINNED.includes(appId);
+    Ctx.build([
+      {label:'Открыть', icon:I.fwd, action:()=>{ WM.open(appId); UI.closeAllFlyouts(); }},
+      '-',
+      {label:'Открепить от начального экрана', icon:I.trash, action:()=>{
+        S.data.startPins = S.data.startPins.filter(a=>a!==appId);
+        S.changed(); UI.renderStart();
+        toast('Пуск', `«${APPS[appId].name}» откреплено`, 'apps');
+      }},
+      {label:pinnedTb?'Закреплено на панели задач':'Закрепить на панели задач', icon:I.apps, disabled:pinnedTb, action:()=>{
+        TASKBAR_PINNED.push(appId); UI.renderTaskbar();
+        toast('Панель задач', `«${APPS[appId].name}» закреплено`, 'apps');
+      }},
+      ...(S.data.installed.includes(appId) ? [{label:'Удалить', icon:I.trash, action:()=>{
+        S.data.installed = S.data.installed.filter(a=>a!==appId);
+        S.data.startPins = (S.data.startPins||[]).filter(a=>a!==appId);
+        S.changed(); UI.renderIcons(); UI.renderStart();
+        WM.wins.forEach(w=>{ if(w.appId===appId) WM.close(w.id); });
+        toast('Удаление', `«${APPS[appId].name}» удалено`, 'trash');
+      }}] : [{label:'Свойства', icon:I.settings, action:()=>toast(APPS[appId].name, APPS[appId].desc||'Системный компонент Windows', APPS[appId].icon)}]),
+    ], e.clientX-40, e.clientY-10);
+  },
+
   renderStart(filter){
-    const q = (filter||'').trim().toLowerCase();
-    const grid = $('#st-grid');
+    if(!S.data.startPins) S.data.startPins = [...START_PINNED];
+    if(!S.data.recent) S.data.recent = [];
+    const q = (filter||'').trim();
+    const ql = q.toLowerCase();
+    const start = $('#start');
+    const grid = $('#st-grid'), dots = $('#st-dots');
     const all = this.allApps();
-    const pinned = q ? all.filter(a=>APPS[a].name.toLowerCase().includes(q)) : all;
-    grid.innerHTML = pinned.slice(0,18).map(a=>`<button class="st-app" data-app="${a}">${I[APPS[a].icon]}<span>${esc(APPS[a].name)}</span></button>`).join('')
-      || `<div class="st-empty">Ничего не найдено</div>`;
+    start.classList.toggle('searchmode', !!ql);
+
+    /* --- режим поиска: список результатов --- */
+    if(ql){
+      const sr = $('#st-searchresults');
+      const found = all.filter(a=>APPS[a].name.toLowerCase().includes(ql));
+      sr.innerHTML = (found.length
+        ? `<div class="sp-group">Приложения</div>` + found.slice(0,8).map(a=>`
+            <button class="sp-item" data-app="${a}">${I[APPS[a].icon]}<span><div>${esc(APPS[a].name)}</div><div class="spi-sub">Приложение</div></span></button>`).join('')
+        : `<div class="sp-group">Приложения</div><div class="sp-hint">Ничего не найдено. Попробуйте поиск в Интернете.</div>`)
+        + `<div class="sp-group">Поиск в Интернете</div>
+           <button class="sp-item" data-web="1">${I.search}<span><div>${esc(q)}</div><div class="spi-sub">Открыть результаты в Edge</div></span></button>`;
+      sr.querySelectorAll('.sp-item[data-app]').forEach(b=>{
+        b.addEventListener('click', ()=>{ WM.open(b.dataset.app); UI.closeAllFlyouts(); });
+      });
+      const web = sr.querySelector('[data-web]');
+      if(web) web.addEventListener('click', ()=>{ WM.open('edge',{query:q}); UI.closeAllFlyouts(); });
+      return;
+    }
+
+    /* --- Закреплено: страницы по 18 плиток (6×3, как в Win11) --- */
+    const pins = S.data.startPins.filter(a=>APPS[a]);
+    const PER = 18;
+    const pages = Math.max(1, Math.ceil(pins.length/PER));
+    this.stPage = clamp(this.stPage, 0, pages-1);
+    const page = pins.slice(this.stPage*PER, (this.stPage+1)*PER);
+    grid.innerHTML = page.map((a,i)=>`<button class="st-app" data-app="${a}" style="animation-delay:${i*14}ms">${I[APPS[a].icon]}<span>${esc(APPS[a].name)}</span></button>`).join('')
+      || `<div class="st-empty">Нет закреплённых приложений</div>`;
     grid.querySelectorAll('.st-app').forEach(b=>{
       b.addEventListener('click', ()=>{ WM.open(b.dataset.app); UI.closeAllFlyouts(); });
+      b.addEventListener('contextmenu', e=>this.tileMenu(e, b.dataset.app));
     });
+    dots.innerHTML = pages>1 ? Array.from({length:pages},(_,i)=>`<button class="st-dot ${i===this.stPage?'on':''}" data-i="${i}" title="Страница ${i+1}"></button>`).join('') : '';
+    dots.querySelectorAll('.st-dot').forEach(d=>d.addEventListener('click', ()=>{ this.stPage=+d.dataset.i; this.renderStart(); }));
+
+    /* --- Рекомендуем: новые приложения + недавние файлы --- */
     const reco = $('#st-reco');
-    const recent = S.data.installed.slice(-4).reverse().map(a=>({name:APPS[a].name, icon:APPS[a].icon, sub:'Недавно добавленные', app:a}));
-    const files = [
-      {name:'Заметки.txt', icon:'notepad', sub:'Документы', app:'notepad'},
-      {name:'Список дел.txt', icon:'notepad', sub:'Документы', app:'notepad'},
-    ];
-    reco.innerHTML = [...recent, ...files].map((r,i)=>`<button class="st-reco-item" data-app="${r.app}"><span class="ri-ico">${I[r.icon]}</span><span><div class="ri-name">${esc(r.name)}</div><div class="ri-sub">${esc(r.sub)}</div></span></button>`).join('');
-    reco.querySelectorAll('.st-reco-item').forEach(b=>{
-      b.addEventListener('click', ()=>{ WM.open(b.dataset.app); UI.closeAllFlyouts(); });
+    const items = [];
+    S.data.installed.slice(-2).reverse().forEach(id=>{
+      if(APPS[id]) items.push({name:APPS[id].name, icon:APPS[id].icon, sub:'Недавно добавлено', app:id});
     });
+    (S.data.recent||[]).forEach(r=>{
+      if(items.length<6 && APPS[r.app]) items.push({name:r.name, icon:r.icon, sub:this.timeAgo(r.t), app:r.app});
+    });
+    if(items.length<4){
+      [{name:'Заметки.txt', icon:'notepad', sub:'Документы', app:'notepad'},
+       {name:'Список дел.txt', icon:'notepad', sub:'Документы', app:'notepad'},
+       {name:'bloom.jpg', icon:'photos', sub:'Изображения', app:'photos'},
+       {name:'Windows11.apk', icon:'apk', sub:'Загрузки', app:'explorer'}]
+        .forEach(f=>{ if(items.length<6 && !items.some(i=>i.name===f.name)) items.push(f); });
+    }
+    reco.innerHTML = items.map(r=>`<button class="st-reco-item" data-app="${r.app}" data-name="${esc(r.name)}">
+        <span class="ri-ico">${I[r.icon]||I.file}</span>
+        <span><div class="ri-name">${esc(r.name)}</div><div class="ri-sub">${esc(r.sub)}</div></span></button>`).join('');
+    reco.querySelectorAll('.st-reco-item').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        const name = b.dataset.name;
+        const isFile = name && (name.endsWith('.txt') || name.endsWith('.jpg') || name.endsWith('.apk'));
+        WM.open(b.dataset.app, isFile ? {name, content:(FS[name]||{}).content} : undefined);
+        UI.closeAllFlyouts();
+      });
+    });
+
+    /* --- Все приложения --- */
     const allList = $('#st-all-list');
     const sorted = all.slice().sort((a,b)=>APPS[a].name.localeCompare(APPS[b].name,'ru'));
     let letter='';
@@ -626,6 +714,43 @@ const UI = {
     }).join('');
     allList.querySelectorAll('.st-all-item').forEach(b=>{
       b.addEventListener('click', ()=>{ WM.open(b.dataset.app); UI.closeAllFlyouts(); });
+      b.addEventListener('contextmenu', e=>{
+        e.preventDefault(); e.stopPropagation();
+        const pinned = (S.data.startPins||[]).includes(b.dataset.app);
+        Ctx.build([
+          {label:pinned?'Открепить от начального экрана':'Закрепить на начальном экране', icon:I.apps, action:()=>{
+            if(pinned) S.data.startPins = S.data.startPins.filter(a=>a!==b.dataset.app);
+            else S.data.startPins.push(b.dataset.app);
+            S.changed(); this.stPage=0; this.renderStart();
+            toast('Пуск', pinned?'Откреплено':'Закреплено на начальном экране', 'apps');
+          }},
+          {label:'Закрепить на панели задач', icon:I.apps, disabled:TASKBAR_PINNED.includes(b.dataset.app), action:()=>{
+            TASKBAR_PINNED.push(b.dataset.app); UI.renderTaskbar(); toast('Панель задач','Закреплено','apps');
+          }},
+        ], e.clientX-30, e.clientY-8);
+      });
+    });
+  },
+
+  timeAgo(t){
+    const d = (Date.now()-t)/1000;
+    if(d < 60) return 'Только что';
+    if(d < 3600) return `${Math.floor(d/60)} мин назад`;
+    if(d < 86400) return `${Math.floor(d/3600)} ч назад`;
+    return `${Math.floor(d/86400)} дн назад`;
+  },
+
+  /* свайп по плиткам — перелистывание страниц Пуска */
+  initStartSwipe(){
+    const grid = $('#st-grid');
+    let x0 = null;
+    grid.addEventListener('pointerdown', e=>{ x0 = e.clientX; });
+    grid.addEventListener('pointerup', e=>{
+      if(x0 == null) return;
+      const dx = e.clientX - x0; x0 = null;
+      if(Math.abs(dx) < 48) return;
+      this.stPage += dx < 0 ? 1 : -1;
+      this.renderStart();
     });
   },
 
@@ -923,7 +1048,7 @@ function initSystem(){
   $('#tb-weather').addEventListener('click', ()=>WM.open('weather'));
 
   // обработчики панели задач
-  $('#tb-start').addEventListener('click', ()=>UI.toggleFlyout('#start', ()=>{ $('#start').classList.remove('allmode'); $('#st-inp').value=''; UI.renderStart(); }));
+  $('#tb-start').addEventListener('click', ()=>UI.toggleFlyout('#start', ()=>{ $('#start').classList.remove('allmode'); UI.stPage=0; $('#st-inp').value=''; UI.renderStart(); }));
   $('#tb-search').addEventListener('click', ()=>UI.toggleFlyout('#searchpanel', ()=>{ $('#sp-inp').value=''; UI.renderSearch(''); }));
   $('#tb-tasks').addEventListener('click', ()=>{ const tv=$('#taskview'); if(tv.classList.contains('open')) tv.classList.remove('open'); else { UI.renderTaskView(); tv.classList.add('open'); } });
   $('#tb-status').addEventListener('click', ()=>UI.toggleFlyout('#qs', ()=>UI.renderQS()));
@@ -941,9 +1066,26 @@ function initSystem(){
     WM.wins.forEach(w=>{ if(anyVisible) WM.minimize(w.id); else WM.restore(w.id); });
   });
   $('#st-inp').addEventListener('input', e=>UI.renderStart(e.target.value));
-  $('#st-inp').addEventListener('keydown', e=>{ if(e.key==='Enter'){ const first=$('#st-grid .st-app'); if(first){ WM.open(first.dataset.app); UI.closeAllFlyouts(); } } });
+  $('#st-inp').addEventListener('keydown', e=>{
+    if(e.key!=='Enter') return;
+    const q = e.target.value.trim().toLowerCase();
+    const first = q ? document.querySelector('#st-searchresults .sp-item[data-app]') || document.querySelector('#st-searchresults [data-web]') : document.querySelector('#st-grid .st-app');
+    if(first){ first.click(); UI.closeAllFlyouts(); }
+  });
   $('#st-all').addEventListener('click', ()=>$('#start').classList.add('allmode'));
   $('#st-back').addEventListener('click', ()=>$('#start').classList.remove('allmode'));
+  $('#st-more').addEventListener('click', ()=>{ WM.open('store'); UI.closeAllFlyouts(); });
+  UI.initStartSwipe();
+  $('.st-user').addEventListener('click', e=>{
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    Ctx.build([
+      {label:'Изменить параметры учётной записи', icon:I.users, action:()=>{ UI.closeAllFlyouts(); WM.open('settings',{page:'acc'}); }},
+      '-',
+      {label:'Блокировать', icon:I.lock, action:()=>{ UI.closeAllFlyouts(); Power.lock(); }},
+      {label:'Выйти', icon:I.fwd, action:()=>{ UI.closeAllFlyouts(); Power.lock(); }},
+    ], Math.max(8, r.left-160), r.top-148);
+  });
   $('#st-power').addEventListener('click', e=>{
     e.stopPropagation();
     const r = e.currentTarget.getBoundingClientRect();
@@ -951,7 +1093,7 @@ function initSystem(){
       {label:'Спящий режим', icon:I.moon, action:()=>{ UI.closeAllFlyouts(); Power.sleep(); }},
       {label:'Завершение работы', icon:I.power, action:()=>{ UI.closeAllFlyouts(); Power.shutdown(); }},
       {label:'Перезагрузка', icon:I.refresh, action:()=>{ UI.closeAllFlyouts(); Power.restart(); }},
-    ], r.left-190, r.top-130);
+    ], Math.max(8, r.right-210), r.top-132);
   });
   $('#sp-inp').addEventListener('input', e=>UI.renderSearch(e.target.value));
 

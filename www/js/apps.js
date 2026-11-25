@@ -125,11 +125,11 @@ APPS.explorer.render = function(body, win){
       if(kind === 'folder' || !ext){ navigate(raw); return; }
       if(['jpg','jpeg','png','gif','webp','bmp'].includes(ext)){
         const r = Bridge.readB64(raw);
-        if(r && r.ok) WM.open('photos', {dataUrl:`data:${r.mime};base64,${r.b64}`, name:n});
+        if(r && r.ok){ WM.open('photos', {dataUrl:`data:${r.mime};base64,${r.b64}`, name:n}); UI.addRecent(n, 'photos', 'photos'); }
         else toast('Проводник', 'Не удалось открыть «'+n+'»', 'phone');
       } else if(['txt','log','md','json','xml','csv'].includes(ext)){
         const r = Bridge.readText(raw);
-        if(r && r.ok) WM.open('notepad', {name:n, content:r.text});
+        if(r && r.ok){ WM.open('notepad', {name:n, content:r.text}); UI.addRecent(n, 'notepad', 'notepad'); }
         else toast('Проводник', 'Не удалось прочитать «'+n+'»', 'phone');
       } else if(['mp3','wav','ogg','flac'].includes(ext)){
         toast('Медиаплеер', 'Воспроизведение файлов телефона — в следующей версии', 'music');
@@ -144,6 +144,7 @@ APPS.explorer.render = function(body, win){
     if(raw.endsWith('.txt')){
       const node = tree[raw];
       WM.open('notepad', {name:raw, content:node?node.content:''});
+      UI.addRecent(raw, 'notepad', 'notepad');
       return;
     }
     if(raw.endsWith('.jpg')){
@@ -152,10 +153,12 @@ APPS.explorer.render = function(body, win){
       const gIdx = PHOTO_GRADS.findIndex(p=>p.name===raw);
       const src = idx>=0 ? WALLPAPERS[idx].url : (gIdx>=0 ? PHOTO_GRADS[gIdx].url : PHOTO_GRADS[0].url);
       WM.open('photos', {src});
+      UI.addRecent(raw, 'photos', 'photos');
       return;
     }
     if(raw.endsWith('.mp3')){
       WM.open('music');
+      UI.addRecent(raw, 'music', 'music');
       return;
     }
     const node = tree[raw];

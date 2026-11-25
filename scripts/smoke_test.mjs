@@ -53,6 +53,27 @@ try {
   console.log('  плиток в сетке:', count('#st-grid .st-app'), '(ожидалось 15+)');
   console.log('  плитки:', [...doc.querySelectorAll('#st-grid .st-app span')].map(s=>s.textContent).join(', ') || '(пусто)');
   console.log('  рекомендуем:', count('#st-reco .st-reco-item'));
+  // поиск внутри Пуска
+  const inp = doc.querySelector('#st-inp');
+  inp.value = 'кальк';
+  inp.dispatchEvent(new w.Event('input', {bubbles:true}));
+  await sleep(60);
+  console.log('  поиск «кальк» → режим списка:', doc.querySelector('#start').classList.contains('searchmode'), '| результатов:', count('#st-searchresults .sp-item'));
+  inp.value = '';
+  inp.dispatchEvent(new w.Event('input', {bubbles:true}));
+  await sleep(40);
+  // контекстное меню плитки → «Открепить»
+  const tile = doc.querySelector('#st-grid .st-app');
+  const before = w.eval('S.data.startPins.length');
+  tile.dispatchEvent(new w.MouseEvent('contextmenu', {bubbles:true, cancelable:true, clientX:300, clientY:300}));
+  await sleep(60);
+  const unpin = [...doc.querySelectorAll('.ctx-item')].find(x=>x.textContent.includes('Открепить'));
+  if(unpin){ unpin.click(); await sleep(60); }
+  console.log('  открепление плитки:', w.eval('S.data.startPins.length'), '<', before, '→', w.eval('S.data.startPins.length') < before ? '✓' : 'НЕТ');
+  // вернуть обратно через «Все приложения»
+  w.eval(`S.data.startPins = [...START_PINNED]; S.changed(); UI.renderStart();`);
+  await sleep(40);
+  // все приложения
   doc.querySelector('#st-all').click();
   await sleep(50);
   console.log('  все приложения (список):', count('#st-all-list .st-all-item'));
