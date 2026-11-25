@@ -5,7 +5,7 @@ import org.junit.Test
 
 class OfflineProfileTest {
     @Test fun knownMinecraftOfflineUuid() {
-        assertEquals("5627dd98-e6be-3c21-b8a8-e92344183641", OfflineProfile.create("Notch").uuid.toString())
+        assertEquals("b50ad385-829d-3141-a216-7e7d7539ba7f", OfflineProfile.create("Notch").uuid.toString())
     }
     @Test fun stableAndTrimmed() {
         assertEquals(OfflineProfile.create("Player"), OfflineProfile.create(" Player "))
